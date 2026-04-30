@@ -1,0 +1,29 @@
+@import "tailwindcss";
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+.slotjack-shell {
+  width: 100vw;
+  height: 100vh;
+  background: #061447;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.slotjack-stage {
+  position: relative;
+  width: 1600px;
+  height: 900px;
+  background: black;
+  overflow: hidden;
+  transform-origin: center center;
+}
