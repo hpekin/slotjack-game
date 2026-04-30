@@ -408,16 +408,24 @@ export default function SlotJackPrototype() {
 
   const [stageScale, setStageScale] = useState(1);
 
-  useEffect(() => {
-    function resizeStage() {
-      const scale = Math.min(window.innerWidth / 1600, window.innerHeight / 900);
-      setStageScale(scale);
-    }
+useEffect(() => {
+  function resizeStage() {
+    const viewportWidth = window.visualViewport?.width || window.innerWidth;
+    const viewportHeight = window.visualViewport?.height || window.innerHeight;
 
-    resizeStage();
-    window.addEventListener("resize", resizeStage);
-    return () => window.removeEventListener("resize", resizeStage);
-  }, []);
+    const scale = Math.min(viewportWidth / 1600, viewportHeight / 900) * 0.98;
+    setStageScale(scale);
+  }
+
+  resizeStage();
+  window.addEventListener("resize", resizeStage);
+  window.visualViewport?.addEventListener("resize", resizeStage);
+
+  return () => {
+    window.removeEventListener("resize", resizeStage);
+    window.visualViewport?.removeEventListener("resize", resizeStage);
+  };
+}, []);
 
   const playerTotal = useMemo(() => handValue(player), [player]);
   const progressiveGlow = spinBetOn && phase === "player" && playerTotal < 21 && (21 - playerTotal) >= 1 && (21 - playerTotal) <= 11;
@@ -910,6 +918,14 @@ export default function SlotJackPrototype() {
 
  return (
   <div className="slotjack-shell text-white">
+
+    <div className="rotate-overlay">
+      <div className="rotate-card">
+        <div className="rotate-icon">↻</div>
+        <div>Rotate your phone</div>
+        <span>SlotJack plays best in landscape mode.</span>
+      </div>
+    </div>
       <style>{`
         @keyframes buttonPulse {
           0%, 100% { filter: brightness(1); }
@@ -919,7 +935,7 @@ export default function SlotJackPrototype() {
 
      <div
   className="slotjack-stage"
-  style={{ transform: `scale(${stageScale})` }}
+  style={{ transform: `translate(-50%, -50%) scale(${stageScale})` }}
 >
         <img src="/assets/table-bg.png" className="absolute inset-0 w-full h-full object-cover select-none" draggable="false" />
         <div className="absolute inset-0 bg-black/10" />

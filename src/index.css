@@ -7,23 +7,65 @@ body,
   height: 100%;
   margin: 0;
   overflow: hidden;
+  background: #061447;
 }
 
 .slotjack-shell {
-  width: 100vw;
-  height: 100vh;
+  position: fixed;
+  inset: 0;
   background: #061447;
   overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 .slotjack-stage {
-  position: relative;
+  position: absolute;
   width: 1600px;
   height: 900px;
+  left: 50%;
+  top: 50%;
   background: black;
   overflow: hidden;
   transform-origin: center center;
+}
+
+/* Rotate device overlay */
+
+.rotate-overlay {
+  display: none;
+}
+
+@media (max-width: 900px) and (orientation: portrait) {
+  .rotate-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 99999;
+    background: #061447;
+    display: grid;
+    place-items: center;
+    text-align: center;
+  }
+
+  .rotate-card {
+    border: 3px solid #facc15;
+    border-radius: 24px;
+    padding: 32px;
+    background: rgba(0, 0, 0, 0.85);
+    color: #facc15;
+    font-weight: 900;
+    font-size: 28px;
+    box-shadow: 0 0 40px rgba(250, 204, 21, 0.6);
+  }
+
+  .rotate-card span {
+    display: block;
+    margin-top: 12px;
+    color: white;
+    font-size: 16px;
+  }
+
+  .rotate-icon {
+    font-size: 64px;
+    line-height: 1;
+    margin-bottom: 16px;
+  }
 }
