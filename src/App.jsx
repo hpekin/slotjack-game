@@ -6,6 +6,7 @@ const RANKS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"]
 const MAIN_BONUS_TYPES = ["21 BONUS WHEEL", "HIDDEN HAND", "FREE SPINS FEATURE"];
 const PROGRESSIVE_JACKPOT = 500000;
 const WHEEL_PRIZES = [10, 20, 25, 40, 50, 75, 100, 150, "MINI", "MAJOR"];
+const WHEEL_SEGMENTS = [...WHEEL_PRIZES, "PROGRESSIVE JACKPOT"];
 const SIDE_BONUS_AMOUNTS = [5, 10, 15, 20, 25, 40, 50, 75];
 const FREE_SPIN_SYMBOLS = [
   { label: "$2", value: 2 },
@@ -75,6 +76,8 @@ function playTone(kind = "click") {
 }
 
 function playAudioFile(src, fallbackKind = "click") {
+  if (typeof window !== "undefined" && window.__slotjackSoundEnabled === false) return;
+
   const VOLUME = {
     click: 0.12,
     chip: 0.16,
@@ -161,8 +164,11 @@ function resolvePrizeAmount(prize) {
 function prizeLabel(prize) {
   return prize === "PROGRESSIVE JACKPOT" ? "PROGRESSIVE" : String(prize);
 }
-function makeFreeSpinAmountGrid() {
-  const grid = Array.from({ length: 9 }, () => randomChoice(FREE_SPIN_SYMBOLS));
+function makeFreeSpinAmountGrid(allowExtraSpins = true) {
+  const availableSymbols = allowExtraSpins
+    ? FREE_SPIN_SYMBOLS
+    : FREE_SPIN_SYMBOLS.filter((symbol) => !symbol.spins);
+  const grid = Array.from({ length: 9 }, () => randomChoice(availableSymbols));
   if (Math.random() < FREE_SPIN_PROGRESSIVE_CHANCE) grid[Math.floor(Math.random() * grid.length)] = { label: "PROGRESSIVE", value: PROGRESSIVE_JACKPOT };
   return grid;
 }
@@ -282,9 +288,14 @@ function SideBetBox({ title, amount, active, disabled, onToggle, small = false }
 }
 
 
-function SideBetMarker({ label, amount, active, disabled, onToggle, icon, className = "", dropKey = 0 }) {
+function SideBetMarker({ label, amount, active, disabled, onToggle, icon, className = "", dropKey = 0, tooltip = "", tooltipClassName = "" }) {
   return (
-    <div className={`absolute z-30 flex items-center gap-[2px] ${className}`}>
+    <div className={`group absolute z-30 flex items-center gap-[2px] ${className}`}>
+      {tooltip ? (
+        <div className={`absolute z-[200] hidden w-[260px] rounded-xl bg-black/90 border-2 border-yellow-300 px-4 py-2 text-yellow-200 text-[13px] font-black leading-tight shadow-[0_0_22px_rgba(250,204,21,.55)] group-hover:block pointer-events-none ${tooltipClassName || "left-[92px] top-[-46px]"}`}>
+          {tooltip}
+        </div>
+      ) : null}
       <div className={`px-2 py-1 rounded-full text-[10px] font-black border border-white whitespace-nowrap ${active ? "bg-green-500 text-black" : "bg-slate-700 text-white"}`}>
         {active ? "AUTO ON" : "OFF"}
       </div>
@@ -354,6 +365,24 @@ function BonusAmountFlash({ amount }) {
   );
 }
 
+function BigWinnerFlash({ amount }) {
+  if (!amount) return null;
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.55 }}
+      animate={{ opacity: 1, scale: [0.55, 1.12, 1] }}
+      exit={{ opacity: 0, scale: 0.9 }}
+      transition={{ duration: 0.35 }}
+      className="absolute inset-0 z-[220] pointer-events-none grid place-items-center bg-black/70"
+    >
+      <div className="rounded-[40px] bg-green-500 border-8 border-white px-20 py-12 text-black text-8xl font-black tracking-widest text-center shadow-[0_0_90px_rgba(34,197,94,1)]">
+        BIG WINNER
+        <div className="mt-4 text-5xl">+${Number(amount).toLocaleString()}</div>
+      </div>
+    </motion.div>
+  );
+}
+
 export default function SlotJackPrototype() {
   const [credits, setCredits] = useState(5000);
   const [blackjackBet, setBlackjackBet] = useState(25);
@@ -364,6 +393,7 @@ export default function SlotJackPrototype() {
   const [spinBetOn, setSpinBetOn] = useState(true);
   const [doubleBonusOn, setDoubleBonusOn] = useState(true);
   const [splitBonusOn, setSplitBonusOn] = useState(true);
+  const [soundEnabled, setSoundEnabled] = useState(true);
 
   const [deck, setDeck] = useState(buildDeck());
   const [player, setPlayer] = useState([]);
@@ -389,6 +419,7 @@ export default function SlotJackPrototype() {
   const [bonusCinematic, setBonusCinematic] = useState(false);
   const [bonusGameVisible, setBonusGameVisible] = useState(false);
   const [bonusFlashAmount, setBonusFlashAmount] = useState(null);
+  const [bigWinnerAmount, setBigWinnerAmount] = useState(null);
   const [sideBonus, setSideBonus] = useState(null);
 
   const [wheelResult, setWheelResult] = useState(null);
@@ -407,6 +438,12 @@ export default function SlotJackPrototype() {
    const [freeSpinExtraAwarded, setFreeSpinExtraAwarded] = useState(0);
 
   const [stageScale, setStageScale] = useState(1);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.__slotjackSoundEnabled = soundEnabled;
+    }
+  }, [soundEnabled]);
 
 useEffect(() => {
   function resizeStage() {
@@ -434,13 +471,17 @@ useEffect(() => {
   const roundCost = blackjackBet + sideBetCost;
   const currentLoss = -roundCost;
   const lockBets = ["dealing", "player", "bonus"].includes(phase);
-  const canSplit = phase === "player" && handReady && player.length === 2 && player[0]?.rank === player[1]?.rank && !pendingSplitHand && credits >= blackjackBet;
+  const canSplit = phase === "player" && handReady && player.length === 2 && player[0]?.rank === player[1]?.rank && cardValue(player[0]) !== 10 && !pendingSplitHand && credits >= blackjackBet;
   const canDoubleDown = phase === "player" && handReady && player.length === 2 && credits >= blackjackBet && [10, 11].includes(playerTotal);
 
   function showBonusFlash(amount) {
     if (!amount || amount <= 0) return;
     playAudioFile(AUDIO.win, "win");
     setBonusFlashAmount(amount);
+    if (amount >= 1000) {
+      setBigWinnerAmount(amount);
+      setTimeout(() => setBigWinnerAmount(null), 2400);
+    }
     setTimeout(() => setBonusFlashAmount(null), 1300);
   }
 
@@ -456,6 +497,7 @@ useEffect(() => {
     setBonusCinematic(false);
     setBonusGameVisible(false);
     setBonusFlashAmount(null);
+    setBigWinnerAmount(null);
     setSideBonus(null);
     setWheelResult(null);
     setHiddenColumns([]);
@@ -481,7 +523,14 @@ useEffect(() => {
     playAudioFile(AUDIO.chip, "chip");
     setLastChip(amount);
     setChipAnimKey((k) => k + 1);
-    setBlackjackBet((b) => Math.min(500, b + amount));
+    setBlackjackBet((b) => Math.min(10000, b + amount));
+  }
+
+  function reduceMainBet() {
+    if (lockBets) return;
+    playAudioFile(AUDIO.chip, "chip");
+    setChipAnimKey((k) => k + 1);
+    setBlackjackBet((b) => Math.max(0, b - Math.min(lastChip || 25, b)));
   }
 
   function dealRound() {
@@ -654,7 +703,11 @@ useEffect(() => {
   function splitPair() {
     playAudioFile(AUDIO.click, "click");
     if (!canSplit) {
-      setMessage("Split is only available when your first two cards match.");
+      if (player.length === 2 && player[0]?.rank === player[1]?.rank && cardValue(player[0]) === 10) {
+        setMessage("Cannot split 10s.");
+      } else {
+        setMessage("Split is only available when your first two cards match.");
+      }
       return;
     }
     setCredits((c) => c - blackjackBet);
@@ -843,7 +896,7 @@ useEffect(() => {
     setFreeSpinSpinning(true);
     setMessage("Free Spins Feature reels are spinning...");
     setTimeout(() => {
-      const grid = makeFreeSpinAmountGrid();
+      const grid = makeFreeSpinAmountGrid(freeSpinExtraAwarded < 2);
       const prize = freeSpinGridValue(grid);
       const rawExtraSpins = grid.filter((s) => s.spins).reduce((sum, s) => sum + (s.spins || 0), 0);
       const remainingExtraSpinCap = Math.max(0, 2 - freeSpinExtraAwarded);
@@ -939,6 +992,7 @@ useEffect(() => {
         <img src="/assets/table-bg.png" className="absolute inset-0 w-full h-full object-cover select-none" draggable="false" />
         <div className="absolute inset-0 bg-black/10" />
         <AnimatePresence><BonusAmountFlash amount={bonusFlashAmount} /></AnimatePresence>
+        <AnimatePresence><BigWinnerFlash amount={bigWinnerAmount} /></AnimatePresence>
 
         <img src="/assets/dealer-shoe.png" className="absolute top-[-7.8%] right-[-4%] z-10 w-[330px] h-auto drop-shadow-2xl" draggable="false" />
 
@@ -964,7 +1018,18 @@ useEffect(() => {
           <div>Last Win: {lastWin}</div>
         </div>
 
+        <button
+          type="button"
+          onClick={() => setSoundEnabled((v) => !v)}
+          className="absolute top-[14.2%] right-[5%] z-[140] rounded-full bg-black/80 border-2 border-yellow-300 px-4 py-2 text-yellow-300 text-sm font-black tracking-widest shadow-[0_0_18px_rgba(250,204,21,.45)] hover:scale-105 active:scale-95 transition"
+        >
+          SOUND {soundEnabled ? "ON" : "OFF"}
+        </button>
+
         <div className="absolute left-[1.4%] top-[32%] z-[70] pointer-events-auto w-[760px] h-[390px]">
+          <div className="absolute left-[105px] top-[-32px] z-[35] text-yellow-300 font-black text-xl tracking-[0.22em] drop-shadow-[0_0_10px_rgba(250,204,21,.85)] pointer-events-none">
+            SIDE BETS
+          </div>
           <SideBetMarker
             label="DOUBLE UP DOUBLE DOWN"
             amount={5}
@@ -972,6 +1037,8 @@ useEffect(() => {
             disabled={lockBets}
             onToggle={() => setDoubleBonusOn((v) => !v)}
             icon="/assets/double-down-sidebet.png"
+            tooltip="sidebet for extra bonus game on double down hands"
+            tooltipClassName="left-[330px] top-[-34px]"
             dropKey={autoChipDropKey}
             className="left-0 top-0 scale-[1.0]"
           />
@@ -982,6 +1049,7 @@ useEffect(() => {
             disabled={lockBets}
             onToggle={() => setSplitBonusOn((v) => !v)}
             icon="/assets/split-screen-sidebet.png"
+            tooltip="sidebet for extra bonus game on split hands"
             dropKey={autoChipDropKey}
             className="left-0 top-[105px] scale-[1.0]"
           />
@@ -992,11 +1060,18 @@ useEffect(() => {
             disabled={lockBets}
             onToggle={() => setSpinBetOn((v) => !v)}
             icon="/assets/21-spin-sidebet.png"
+            tooltip="main sidebet for slot features"
             dropKey={autoChipDropKey}
             className="left-0 top-[210px] scale-[1.0] drop-shadow-[0_0_18px_rgba(255,215,0,.9)]"
           />
 
-          <div className="absolute left-[135px] top-[305px] w-[120px] h-[110px] flex flex-col items-center justify-center">
+          <button
+            type="button"
+            disabled={lockBets || blackjackBet <= 0}
+            onClick={reduceMainBet}
+            title="Click to reduce main bet"
+            className="absolute left-[135px] top-[305px] w-[120px] h-[110px] flex flex-col items-center justify-center bg-transparent border-0 p-0 pointer-events-auto transition hover:scale-105 active:scale-95 disabled:opacity-60 disabled:hover:scale-100"
+          >
             <div className="relative w-14 h-14 rounded-full border-4 border-yellow-300/70 bg-black/35 grid place-items-center overflow-visible shadow-[0_0_20px_rgba(250,204,21,.5)]">
               {Array.from({ length: Math.min(9, Math.ceil(blackjackBet / 25) || 1) }).map((_, i) => (
                 <div
@@ -1020,8 +1095,8 @@ useEffect(() => {
                 </motion.div>
               </AnimatePresence>
             </div>
-            <div className="mt-2 text-center text-yellow-300 font-black text-lg drop-shadow-[0_0_8px_rgba(0,0,0,.9)]">Main bet</div>
-          </div>
+            <div className="mt-2 text-center text-yellow-300 font-black text-lg drop-shadow-[0_0_8px_rgba(0,0,0,.9)]">MAIN BET</div>
+          </button>
         </div>
 
         <div className="absolute top-[25.5%] left-[49.5%] -translate-x-1/2 z-20 flex flex-col items-center">
@@ -1120,7 +1195,7 @@ useEffect(() => {
         </div>
 
         {phase === "bonus" && bonusGameVisible && (
-          <motion.div initial={{ x: -520, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ type: "spring", stiffness: 115, damping: 18 }} className="absolute top-[145px] left-[48px] z-[80] w-[540px] h-[665px] overflow-hidden rounded-3xl bg-[#10216c]/95 border-4 border-yellow-300 p-4 pb-24 text-center shadow-2xl">
+          <motion.div initial={{ x: -520, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ type: "spring", stiffness: 115, damping: 18 }} className="absolute top-[145px] left-[48px] z-[80] w-[540px] h-[665px] overflow-y-auto overflow-x-hidden touch-pan-y rounded-3xl bg-[#10216c]/95 border-4 border-yellow-300 p-4 pb-32 text-center shadow-2xl [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" style={{ WebkitOverflowScrolling: "touch" }}>
             {bonusType === "DOUBLE UP DOUBLE DOWN" && sideBonus && (
               <div className="space-y-4">
                 <MiniSpinDevice title="HIT CARD REEL" value={sideBonus.revealed ? `${sideBonus.card.rank}${sideBonus.card.suit}` : null} spinning={sideBonus.spinning} />
@@ -1145,8 +1220,43 @@ useEffect(() => {
 
             {bonusType === "21 BONUS WHEEL" && (
               <>
-                <motion.div animate={wheelSpinning ? { rotate: 1440 } : { rotate: 0 }} transition={{ duration: 1 }} className="mx-auto w-48 h-48 rounded-full border-8 border-yellow-300 bg-[conic-gradient(#7c2d12,#facc15,#2563eb,#7c2d12,#facc15,#2563eb,#7c2d12)] grid place-items-center">
-                  <div className="w-24 h-24 rounded-full bg-black grid place-items-center text-yellow-300 text-2xl font-black">{wheelResult ?? "SPIN"}</div>
+                <motion.div
+                  animate={wheelSpinning ? { rotate: 1440 } : { rotate: 0 }}
+                  transition={{ duration: 1 }}
+                  className="relative mx-auto w-56 h-56 rounded-full border-8 border-yellow-300 overflow-hidden shadow-[0_0_32px_rgba(250,204,21,.55)]"
+                  style={{
+                    background: `conic-gradient(${WHEEL_SEGMENTS.map((_, i) => {
+                      const segment = 360 / WHEEL_SEGMENTS.length;
+                      const colors = ["#7c2d12", "#facc15", "#2563eb", "#4c1d95"];
+                      return `${colors[i % colors.length]} ${i * segment}deg ${(i + 1) * segment}deg`;
+                    }).join(", ")})`,
+                  }}
+                >
+                  {WHEEL_SEGMENTS.map((prize, i) => {
+                    const segment = 360 / WHEEL_SEGMENTS.length;
+                    const angle = i * segment + segment / 2;
+                    const label = typeof prize === "number" ? String(prize) : "??";
+                    return (
+                      <div
+                        key={`${prize}-${i}`}
+                        className="absolute left-1/2 top-1/2 z-10 w-[34px] h-[22px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-black/55 border border-white/50 grid place-items-center text-[10px] leading-none font-black text-white drop-shadow-[0_0_5px_rgba(0,0,0,1)]"
+                        style={{ transform: `translate(-50%, -50%) rotate(${angle}deg) translateY(-78px) rotate(${-angle}deg)` }}
+                      >
+                        {label}
+                      </div>
+                    );
+                  })}
+                  {WHEEL_SEGMENTS.map((_, i) => {
+                    const segment = 360 / WHEEL_SEGMENTS.length;
+                    return (
+                      <div
+                        key={`divider-${i}`}
+                        className="absolute left-1/2 top-1/2 h-[112px] w-[2px] origin-bottom bg-black/45"
+                        style={{ transform: `translate(-50%, -100%) rotate(${i * segment}deg)` }}
+                      />
+                    );
+                  })}
+                  <div className="absolute left-1/2 top-1/2 z-20 w-24 h-24 -translate-x-1/2 -translate-y-1/2 rounded-full bg-black border-4 border-yellow-300 grid place-items-center text-yellow-300 text-2xl font-black shadow-[0_0_18px_rgba(0,0,0,.9)]">{wheelResult ?? "SPIN"}</div>
                 </motion.div>
                 <button onClick={spinWheel} disabled={wheelSpinning || wheelResult !== null} className="mt-4 bg-yellow-400 text-black px-6 py-3 rounded-xl font-black disabled:opacity-40">SPIN WHEEL</button>
               </>
@@ -1214,7 +1324,7 @@ useEffect(() => {
                       <div key={`${symbol.label}-${i}-${freeSpinsLeft}`} className={`h-14 rounded-xl border-2 grid place-items-center overflow-hidden ${isBigBonus ? "bg-gradient-to-b from-yellow-200 to-yellow-500 border-white" : "bg-white border-slate-200"}`}>
                         {freeSpinSpinning ? (
                           <motion.div animate={{ y: ["-65%", "18%", "-65%"] }} transition={{ duration: 0.16, repeat: Infinity, ease: "linear" }} className="flex flex-col gap-4">
-                            {["$2", "$5", "$10", "+2 SPINS", "WILD", "MINI", "MAJOR"].map((s, k) => (
+                            {["$2", "$5", "$10", ...(freeSpinExtraAwarded < 2 ? ["+2 SPINS"] : []), "WILD", "MINI", "MAJOR"].map((s, k) => (
                               <div key={k} className={`text-lg font-black ${["WILD", "MINI", "MAJOR", "+2 SPINS"].includes(s) ? "text-red-700" : "text-black"}`}>{s}</div>
                             ))}
                           </motion.div>
