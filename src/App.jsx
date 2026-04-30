@@ -918,7 +918,6 @@ useEffect(() => {
 
  return (
   <div className="slotjack-shell text-white">
-
     <div className="rotate-overlay">
       <div className="rotate-card">
         <div className="rotate-icon">↻</div>
@@ -1121,7 +1120,7 @@ useEffect(() => {
         </div>
 
         {phase === "bonus" && bonusGameVisible && (
-          <motion.div initial={{ x: -520, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ type: "spring", stiffness: 115, damping: 18 }} className="absolute top-[16%] left-[3%] z-[80] w-[540px] h-[74vh] overflow-hidden rounded-3xl bg-[#10216c]/95 border-4 border-yellow-300 p-4 pb-24 text-center shadow-2xl">
+          <motion.div initial={{ x: -520, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ type: "spring", stiffness: 115, damping: 18 }} className="absolute top-[145px] left-[48px] z-[80] w-[540px] h-[665px] overflow-hidden rounded-3xl bg-[#10216c]/95 border-4 border-yellow-300 p-4 pb-24 text-center shadow-2xl">
             {bonusType === "DOUBLE UP DOUBLE DOWN" && sideBonus && (
               <div className="space-y-4">
                 <MiniSpinDevice title="HIT CARD REEL" value={sideBonus.revealed ? `${sideBonus.card.rank}${sideBonus.card.suit}` : null} spinning={sideBonus.spinning} />
