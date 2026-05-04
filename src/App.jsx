@@ -874,7 +874,7 @@ useEffect(() => {
       setTwentyOneFlash(false);
       setMessage(message);
       triggerMainBonus();
-    }, 1125);
+    }, 950);
   }
 
   function resetBonus() {
