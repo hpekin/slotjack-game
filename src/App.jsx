@@ -10,14 +10,19 @@ const WHEEL_SEGMENTS = [...WHEEL_PRIZES, "PROGRESSIVE JACKPOT"];
 const SIDE_BONUS_AMOUNTS = [5, 10, 15, 20, 25, 40, 50, 75];
 const FREE_SPIN_SYMBOLS = [
   { label: "$2", value: 2 },
+  { label: "$3", value: 3 },
   { label: "$5", value: 5 },
+  { label: "$8", value: 8 },
   { label: "$10", value: 10 },
   { label: "$15", value: 15 },
+  { label: "$20", value: 20 },
+  { label: "+2 SPINS", value: 0, spins: 2 },
   { label: "+2 SPINS", value: 0, spins: 2 },
   { label: "WILD", value: 5 },
-  { label: "MINI", value: 10 },
+  { label: "MINI", value: 25 },
   { label: "MAJOR", value: 100 },
   { label: "GRAND", value: 1000 },
+  { label: "—", value: 0 },
   { label: "—", value: 0 },
 ];
 
@@ -26,7 +31,7 @@ const DEMO_SPLIT_CHANCE = 0.125;
 const DEMO_DOUBLE_TOTAL_CHANCE = 0.155;
 const DEMO_SPIN_TO_21_CHANCE = 0.36;
 const WHEEL_PROGRESSIVE_CHANCE = 0.02;
-const FREE_SPIN_PROGRESSIVE_CHANCE = 0.003;
+const FREE_SPIN_PROGRESSIVE_CHANCE = 0.001;
 
 const AUDIO = {
   click: "/assets/audio/click.mp3",
@@ -205,6 +210,27 @@ function handValue(hand) {
   }
   return total;
 }
+function hardHandValue(hand) {
+  return hand.reduce((sum, card) => {
+    if (!card) return sum;
+    if (card.rank === "A") return sum + 1;
+    return sum + cardValue(card);
+  }, 0);
+}
+function isSoftHand(hand) {
+  return hand.some((card) => card?.rank === "A") && hardHandValue(hand) + 10 === handValue(hand);
+}
+function handDisplayValue(hand) {
+  const hard = hardHandValue(hand);
+  const best = handValue(hand);
+  if (isSoftHand(hand) && hard !== best) return `${hard}/${best}`;
+  return String(best);
+}
+function canDoubleTotal(hand) {
+  const hard = hardHandValue(hand);
+  const best = handValue(hand);
+  return [10, 11].includes(hard) || [10, 11].includes(best);
+}
 function naturalBlackjack(hand) {
   return hand.length === 2 && handValue(hand) === 21;
 }
@@ -221,6 +247,14 @@ function symbolRank(symbol) {
 }
 function findCardByValue(deck, value) {
   return deck.find((card) => cardValue(card) === value);
+}
+function findNonDealerBlackjackSecondCard(deck, dealerFirst) {
+  if (!dealerFirst) return null;
+  return deck.find((card) => handValue([dealerFirst, card]) !== 21);
+}
+function findDealerHitAvoidingExact21(deck, currentDealer) {
+  const currentTotal = handValue(currentDealer);
+  return deck.find((card) => handValue([...currentDealer, card]) !== 21 && handValue([...currentDealer, card]) >= currentTotal);
 }
 function resolvePrizeAmount(prize) {
   if (prize === "PROGRESSIVE JACKPOT") return PROGRESSIVE_JACKPOT;
@@ -239,6 +273,21 @@ function makeFreeSpinAmountGrid(allowExtraSpins = true) {
     ? FREE_SPIN_SYMBOLS
     : FREE_SPIN_SYMBOLS.filter((symbol) => !symbol.spins);
   const grid = Array.from({ length: 9 }, () => randomChoice(availableSymbols));
+  let grandSeen = false;
+  let majorSeen = false;
+  for (let i = 0; i < grid.length; i++) {
+    if (grid[i]?.label === "GRAND") {
+      if (grandSeen || Math.random() < 0.62) grid[i] = randomChoice([{ label: "$10", value: 10 }, { label: "$20", value: 20 }, { label: "MINI", value: 25 }]);
+      grandSeen = true;
+    }
+    if (grid[i]?.label === "MAJOR") {
+      if (majorSeen || Math.random() < 0.32) grid[i] = randomChoice([{ label: "$15", value: 15 }, { label: "$20", value: 20 }, { label: "MINI", value: 25 }]);
+      majorSeen = true;
+    }
+  }
+  if (allowExtraSpins && !grid.some((symbol) => symbol?.spins) && Math.random() < 0.34) {
+    grid[Math.floor(Math.random() * grid.length)] = { label: "+2 SPINS", value: 0, spins: 2 };
+  }
   if (Math.random() < FREE_SPIN_PROGRESSIVE_CHANCE) grid[Math.floor(Math.random() * grid.length)] = { label: "PROGRESSIVE", value: PROGRESSIVE_JACKPOT };
   return grid;
 }
@@ -280,7 +329,8 @@ function GameFeedMessage({ message }) {
 
 function CardFace({ card, hidden = false, delay = 0, fromShoe = true }) {
   if (!card) return null;
-  const red = card.suit === "♥" || card.suit === "♦";
+  const safeCard = hidden ? { rank: "?", suit: "", id: card.id } : card;
+  const red = !hidden && (safeCard.suit === "♥" || safeCard.suit === "♦");
   return (
     <motion.div
       layout
@@ -293,9 +343,9 @@ function CardFace({ card, hidden = false, delay = 0, fromShoe = true }) {
         <div className="h-full w-full rounded-md bg-red-700/70 grid place-items-center text-white font-black text-2xl">?</div>
       ) : (
         <>
-          <div className={`font-black text-xl leading-none ${red ? "text-red-600" : "text-black"}`}>{card.rank}</div>
-          <div className={`text-4xl text-center leading-none ${red ? "text-red-600" : "text-black"}`}>{card.suit}</div>
-          <div className={`font-black text-xl self-end leading-none ${red ? "text-red-600" : "text-black"}`}>{card.rank}</div>
+          <div className={`font-black text-xl leading-none ${red ? "text-red-600" : "text-black"}`}>{safeCard.rank}</div>
+          <div className={`text-4xl text-center leading-none ${red ? "text-red-600" : "text-black"}`}>{safeCard.suit}</div>
+          <div className={`font-black text-xl self-end leading-none ${red ? "text-red-600" : "text-black"}`}>{safeCard.rank}</div>
         </>
       )}
     </motion.div>
@@ -310,7 +360,7 @@ function SpinningReelCell({ active }) {
         <motion.div initial={{ y: "-76%" }} animate={{ y: ["-76%", "-8%"] }} transition={{ duration: 0.18, repeat: Infinity, ease: "linear" }} className="absolute inset-x-0 flex flex-col items-center gap-2 py-2">
           {[...cards, ...cards, ...cards].map((s, i) => {
             const red = s.includes("♥") || s.includes("♦");
-            return <div key={i} className={`h-12 w-[86%] rounded-md bg-white border border-slate-200 grid place-items-center font-black text-xl shadow-md ${red ? "text-red-600" : "text-black"}`}>{s}</div>;
+            return <div key={i} className={`h-12 w-[86%] rounded-md bg-white border border-slate-200 grid place-items-center font-black text-[26px] leading-none tracking-[-0.05em] shadow-md ${red ? "text-red-600" : "text-black"}`}>{s}</div>;
           })}
         </motion.div>
       ) : null}
@@ -374,7 +424,7 @@ function SideBetMarker({ label, amount, active, disabled, onToggle, icon, classN
         type="button"
         disabled={disabled}
         onClick={onToggle}
-        className={`relative w-[225px] h-[92px] bg-transparent border-0 p-0 transition ${
+        className={`relative w-[225px] h-[92px] bg-transparent border-0 p-0 outline-none focus:outline-none focus-visible:outline-none focus:ring-0 transition ${
           active ? "opacity-100" : "opacity-50 grayscale"
         } ${disabled ? "cursor-not-allowed" : "hover:scale-105 active:scale-95"}`}
       >
@@ -418,7 +468,7 @@ function SideBetMarker({ label, amount, active, disabled, onToggle, icon, classN
             e.stopPropagation();
             onTooltipToggle?.();
           }}
-          className="ml-2 whitespace-nowrap text-green-400 text-[12px] font-black tracking-wider uppercase drop-shadow-[0_0_10px_rgba(34,197,94,.95)] bg-transparent border-0 p-0 cursor-pointer hover:scale-105 active:scale-95 transition"
+          className="ml-2 whitespace-nowrap text-green-400 text-[12px] font-black tracking-wider uppercase drop-shadow-[0_0_10px_rgba(34,197,94,.95)] bg-transparent border-0 p-0 outline-none focus:outline-none focus-visible:outline-none focus:ring-0 cursor-pointer hover:scale-105 active:scale-95 transition"
         >
           BONUS ACTIVE
         </button>
@@ -437,11 +487,11 @@ function MiniSpinDevice({ title, value, spinning, type = "card" }) {
           <motion.div animate={{ y: ["-72%", "-5%"] }} transition={{ duration: 0.18, repeat: Infinity, ease: "linear" }} className="absolute inset-x-0 flex flex-col items-center gap-2 py-2">
             {[...symbols, ...symbols, ...symbols].map((s, i) => {
               const red = s.includes("♥") || s.includes("♦");
-              return <div key={i} className={`h-12 w-[86%] rounded-md bg-white grid place-items-center font-black text-2xl ${red ? "text-red-600" : "text-black"}`}>{s}</div>;
+              return <div key={i} className={`h-12 w-[86%] rounded-md bg-white grid place-items-center font-black text-[40px] leading-none ${red ? "text-red-600" : "text-black"}`}>{s}</div>;
             })}
           </motion.div>
         ) : (
-          <div className={`h-full grid place-items-center bg-white text-4xl font-black ${String(value).includes("♥") || String(value).includes("♦") ? "text-red-600" : "text-black"}`}>{value || "?"}</div>
+          <div className={`h-full grid place-items-center bg-white text-5xl font-black ${String(value).includes("♥") || String(value).includes("♦") ? "text-red-600" : "text-black"}`}>{value || "?"}</div>
         )}
       </div>
     </div>
@@ -453,6 +503,50 @@ function BonusAmountFlash({ amount }) {
   return (
     <motion.div initial={{ scale: 0.4, opacity: 0 }} animate={{ scale: [0.4, 1.15, 1], opacity: 1 }} exit={{ opacity: 0, scale: 0.7 }} className="absolute inset-0 z-[20000] pointer-events-none grid place-items-center">
       <div className="rounded-3xl bg-green-500 border-4 border-white px-12 py-6 text-black text-6xl font-black shadow-[0_0_60px_rgba(34,197,94,.9)]">{`BONUS = ${money(amount)}`}</div>
+    </motion.div>
+  );
+}
+
+function ConfettiBurst({ show }) {
+  if (!show) return null;
+  const pieces = Array.from({ length: 72 }, (_, i) => i);
+  return (
+    <div className="absolute inset-0 z-[30050] pointer-events-none overflow-hidden">
+      {pieces.map((i) => {
+        const left = `${(i * 37) % 100}%`;
+        const delay = (i % 12) * 0.035;
+        const duration = 1.15 + (i % 8) * 0.08;
+        const rotate = (i % 2 === 0 ? 1 : -1) * (180 + i * 13);
+        const bg = ["bg-yellow-300", "bg-green-400", "bg-cyan-300", "bg-red-400", "bg-purple-400"][i % 5];
+        return (
+          <motion.div
+            key={i}
+            initial={{ y: -40, x: 0, opacity: 1, rotate: 0 }}
+            animate={{ y: 950, x: ((i % 9) - 4) * 38, opacity: [1, 1, 0], rotate }}
+            transition={{ duration, delay, ease: "easeOut" }}
+            className={`absolute top-0 ${bg} w-3 h-5 rounded-sm shadow-lg`}
+            style={{ left }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function ProgressiveWinnerFlash({ amount }) {
+  if (!amount) return null;
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.45 }}
+      animate={{ opacity: 1, scale: [0.45, 1.13, 1] }}
+      exit={{ opacity: 0, scale: 0.9 }}
+      transition={{ duration: 0.42 }}
+      className="absolute inset-0 z-[30060] pointer-events-none grid place-items-center bg-black/80"
+    >
+      <div className="rounded-[48px] bg-green-500 border-8 border-white px-20 py-14 text-black text-[92px] font-black tracking-widest text-center shadow-[0_0_120px_rgba(34,197,94,1)] leading-tight">
+        PROGRESSIVE JACKPOT WINNER!!!
+        <div className="mt-6 text-[72px]">{`+${money(amount)}`}</div>
+      </div>
     </motion.div>
   );
 }
@@ -492,6 +586,43 @@ function TwentyOneFlash({ show }) {
   );
 }
 
+function HandResultFlash({ amount }) {
+  if (amount === null || amount === undefined) return null;
+  const isPush = amount === "push" || amount?.kind === "push";
+  const numericAmount = Number(amount) || 0;
+  const isWin = numericAmount >= 0;
+
+  if (isPush) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, scale: 0.65, y: 18 }}
+        animate={{ opacity: 1, scale: [0.65, 1.08, 1], y: 0 }}
+        exit={{ opacity: 0, scale: 0.85, y: -10 }}
+        transition={{ duration: 0.25 }}
+        className="absolute left-1/2 bottom-[24%] z-[21000] pointer-events-none -translate-x-1/2"
+      >
+        <div className="bg-green-500 rounded-[24px] border-4 border-white px-10 py-4 text-black text-5xl font-black tracking-wider text-center shadow-[0_0_55px_rgba(34,197,94,.9)]">
+          PUSH
+        </div>
+      </motion.div>
+    );
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.65, y: 18 }}
+      animate={{ opacity: 1, scale: [0.65, 1.08, 1], y: 0 }}
+      exit={{ opacity: 0, scale: 0.85, y: -10 }}
+      transition={{ duration: 0.25 }}
+      className={`${isWin ? "left-1/2 bottom-[24%] -translate-x-1/2" : "left-[21%] bottom-[21%]"} absolute z-[21000] pointer-events-none`}
+    >
+      <div className={`${isWin ? "bg-green-500 px-10 py-4 text-5xl shadow-[0_0_55px_rgba(34,197,94,.9)]" : "bg-red-600 px-4 py-2 text-2xl shadow-[0_0_30px_rgba(239,68,68,.75)]"} rounded-[24px] border-4 border-white text-black font-black tracking-wider text-center`}>
+        {isWin ? `WIN ${money(numericAmount)}` : `LOSS ${money(numericAmount)}`}
+      </div>
+    </motion.div>
+  );
+}
+
 export default function SlotJackPrototype() {
   const [credits, setCredits] = useState(5000);
   const [blackjackBet, setBlackjackBet] = useState(25);
@@ -504,6 +635,8 @@ export default function SlotJackPrototype() {
   const [splitBonusOn, setSplitBonusOn] = useState(true);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [rulesOpen, setRulesOpen] = useState(false);
+  const [oddsOpen, setOddsOpen] = useState(false);
+  const [suppressOddsHover, setSuppressOddsHover] = useState(false);
   const [openSideBetTooltip, setOpenSideBetTooltip] = useState(null);
   const [suppressedSideBetHover, setSuppressedSideBetHover] = useState(null);
   const [suppressRulesHover, setSuppressRulesHover] = useState(false);
@@ -517,6 +650,8 @@ export default function SlotJackPrototype() {
   const [splitActiveHandIndex, setSplitActiveHandIndex] = useState(0);
   const [splitCompletedHands, setSplitCompletedHands] = useState([]);
   const [splitHandNotice, setSplitHandNotice] = useState(null);
+  const [splitAcesLocked, setSplitAcesLocked] = useState(false);
+  const [splitCurrentHandLocked, setSplitCurrentHandLocked] = useState(false);
   const [pendingSplitHand, setPendingSplitHand] = useState(null);
   const [pendingDoubleCard, setPendingDoubleCard] = useState(null);
   const [pendingDoubleDeck, setPendingDoubleDeck] = useState(null);
@@ -530,6 +665,8 @@ export default function SlotJackPrototype() {
   const [wheelSpinning, setWheelSpinning] = useState(false);
   const [handReady, setHandReady] = useState(false);
   const [dealerResolving, setDealerResolving] = useState(false);
+  const [dealerUpcardVisible, setDealerUpcardVisible] = useState(false);
+  const [dealerRevealCards, setDealerRevealCards] = useState([]);
 
   const [bonusType, setBonusType] = useState(null);
   const [bonusIndex, setBonusIndex] = useState(0);
@@ -540,6 +677,10 @@ export default function SlotJackPrototype() {
   const [bonusFlashAmount, setBonusFlashAmount] = useState(null);
   const [twentyOneFlash, setTwentyOneFlash] = useState(false);
   const [bigWinnerAmount, setBigWinnerAmount] = useState(null);
+  const [progressiveWinnerAmount, setProgressiveWinnerAmount] = useState(null);
+  const [showConfetti, setShowConfetti] = useState(false);
+  const [handResultFlash, setHandResultFlash] = useState(null);
+  const [pendingHandResult, setPendingHandResult] = useState(null);
   const [sideBonus, setSideBonus] = useState(null);
 
   const [wheelResult, setWheelResult] = useState(null);
@@ -557,6 +698,7 @@ export default function SlotJackPrototype() {
   const [freeSpinSpinning, setFreeSpinSpinning] = useState(false);
   const [freeSpinExtraAwarded, setFreeSpinExtraAwarded] = useState(0);
   const [freeSpinPrizeFlash, setFreeSpinPrizeFlash] = useState(null);
+  const [freeSpinExtraFlash, setFreeSpinExtraFlash] = useState(null);
   const [freeSpinFinalFlash, setFreeSpinFinalFlash] = useState(null);
 
   const [stageScale, setStageScale] = useState(1);
@@ -572,21 +714,69 @@ export default function SlotJackPrototype() {
   const splitSideBonusTimerRef = useRef(null);
   const bigWinnerVisualTimerRef = useRef(null);
   const bigWinnerActiveRef = useRef(false);
+  const handResultTimerRef = useRef(null);
+  const latestPendingHandResultRef = useRef(null);
+  const roundBonusWinRef = useRef(0);
+  const suppressNextHandResultFlashRef = useRef(false);
+
+  function triggerConfetti(duration = 1700) {
+    setShowConfetti(true);
+    setTimeout(() => setShowConfetti(false), duration);
+  }
 
   function showBigWinner(amount, duration = 1800) {
     if (!amount || amount < 1000) return;
     if (bigWinnerActiveRef.current) return;
 
     bigWinnerActiveRef.current = true;
+    triggerConfetti(duration);
     playAudioFile(AUDIO.bigWin, "bigWin");
     setBigWinnerAmount(amount);
 
     if (bigWinnerVisualTimerRef.current) clearTimeout(bigWinnerVisualTimerRef.current);
     bigWinnerVisualTimerRef.current = setTimeout(() => {
       setBigWinnerAmount(null);
+    setProgressiveWinnerAmount(null);
+    setShowConfetti(false);
       bigWinnerActiveRef.current = false;
       bigWinnerVisualTimerRef.current = null;
     }, duration);
+  }
+
+  function showProgressiveWinner(amount = PROGRESSIVE_JACKPOT, duration = 3600) {
+    if (!amount) return;
+    triggerConfetti(duration);
+    playAudioFile(AUDIO.bigWin, "bigWin");
+    setProgressiveWinnerAmount(amount);
+    if (bigWinnerVisualTimerRef.current) clearTimeout(bigWinnerVisualTimerRef.current);
+    bigWinnerVisualTimerRef.current = setTimeout(() => {
+      setProgressiveWinnerAmount(null);
+      bigWinnerActiveRef.current = false;
+      bigWinnerVisualTimerRef.current = null;
+    }, duration);
+  }
+
+  function showHandResult(amount) {
+    if (suppressNextHandResultFlashRef.current) {
+      suppressNextHandResultFlashRef.current = false;
+      return;
+    }
+    latestPendingHandResultRef.current = amount;
+    setPendingHandResult({ amount, id: Date.now() + Math.random() });
+  }
+
+  function showHandResultNow(amount) {
+    if (handResultTimerRef.current) {
+      clearTimeout(handResultTimerRef.current);
+      handResultTimerRef.current = null;
+    }
+    latestPendingHandResultRef.current = amount;
+    setPendingHandResult(null);
+    setHandResultFlash(amount);
+    setTimeout(() => {
+      setHandResultFlash(null);
+      latestPendingHandResultRef.current = null;
+    }, 1325);
   }
 
   const [wheelQuickStopJolt, setWheelQuickStopJolt] = useState(false);
@@ -602,6 +792,30 @@ export default function SlotJackPrototype() {
       window.__slotjackSoundEnabled = soundEnabled;
     }
   }, [soundEnabled]);
+
+  useEffect(() => {
+    if (!pendingHandResult || phase !== "complete") return;
+
+    if (handResultTimerRef.current) clearTimeout(handResultTimerRef.current);
+    handResultTimerRef.current = setTimeout(() => {
+      setHandResultFlash(pendingHandResult.amount);
+      handResultTimerRef.current = setTimeout(() => {
+        setHandResultFlash(null);
+    setPendingHandResult(null);
+    setPendingHandResult(null);
+        setPendingHandResult(null);
+        latestPendingHandResultRef.current = null;
+        handResultTimerRef.current = null;
+      }, 1325);
+    }, 175);
+
+    return () => {
+      if (handResultTimerRef.current) {
+        clearTimeout(handResultTimerRef.current);
+        handResultTimerRef.current = null;
+      }
+    };
+  }, [pendingHandResult, phase]);
 
 useEffect(() => {
   function resizeStage() {
@@ -629,14 +843,17 @@ useEffect(() => {
   const roundCost = blackjackBet + sideBetCost;
   const currentLoss = -roundCost;
   const lockBets = ["dealing", "player", "bonus"].includes(phase);
-  const canSplit = phase === "player" && handReady && player.length === 2 && player[0]?.rank === player[1]?.rank && cardValue(player[0]) !== 10 && !pendingSplitHand && credits >= blackjackBet;
-  const canDoubleDown = phase === "player" && handReady && !splitPlayActive && !splitHand && player.length === 2 && credits >= blackjackBet && [10, 11].includes(playerTotal);
+  const canSplit = phase === "player" && handReady && !splitPlayActive && !splitHand && player.length === 2 && player[0]?.rank === player[1]?.rank && cardValue(player[0]) !== 10 && !pendingSplitHand && credits >= blackjackBet;
+  const canDoubleDown = phase === "player" && handReady && !splitPlayActive && !splitHand && player.length === 2 && credits >= blackjackBet && canDoubleTotal(player);
 
   function showBonusFlash(amount) {
     if (!amount || amount <= 0) return;
+    roundBonusWinRef.current += amount;
     playAudioFile(AUDIO.bonusAmount, "bonusAmount");
     setBonusFlashAmount(amount);
-    if (amount >= 1000) {
+    if (amount >= PROGRESSIVE_JACKPOT) {
+      showProgressiveWinner(amount, 3600);
+    } else if (amount >= 1000) {
       showBigWinner(amount, 2400);
     }
     setTimeout(() => setBonusFlashAmount(null), 1300);
@@ -657,7 +874,7 @@ useEffect(() => {
       setTwentyOneFlash(false);
       setMessage(message);
       triggerMainBonus();
-    }, 850);
+    }, 1125);
   }
 
   function resetBonus() {
@@ -697,8 +914,14 @@ useEffect(() => {
       clearTimeout(bigWinnerVisualTimerRef.current);
       bigWinnerVisualTimerRef.current = null;
     }
+    if (handResultTimerRef.current) {
+      clearTimeout(handResultTimerRef.current);
+      handResultTimerRef.current = null;
+    }
     bigWinnerActiveRef.current = false;
     postBonusActionRef.current = null;
+    roundBonusWinRef.current = 0;
+    suppressNextHandResultFlashRef.current = false;
     setBonusType(null);
     setBonusIntro(false);
     setBonusCinematic(false);
@@ -707,6 +930,8 @@ useEffect(() => {
     setBonusFlashAmount(null);
     setTwentyOneFlash(false);
     setDealerResolving(false);
+    setDealerUpcardVisible(false);
+    setDealerRevealCards([]);
     setBigWinnerAmount(null);
     setSideBonus(null);
     setWheelResult(null);
@@ -723,15 +948,19 @@ useEffect(() => {
     setFreeSpinSpinning(false);
     setFreeSpinExtraAwarded(0);
     setFreeSpinPrizeFlash(null);
+    setFreeSpinExtraFlash(null);
     setFreeSpinFinalFlash(null);
     setWheelQuickStopJolt(false);
     setFreeSpinQuickStopJolt(false);
     setSpinHitQuickStopJolt(false);
     setSplitHandNotice(null);
+    setSplitAcesLocked(false);
+    setSplitCurrentHandLocked(false);
     setPendingSplitHand(null);
     setSplitPlayActive(false);
     setSplitActiveHandIndex(0);
     setSplitCompletedHands([]);
+    setSplitCurrentHandLocked(false);
     setPendingDoubleCard(null);
     setPendingDoubleDeck(null);
     setPendingDoubleBet(null);
@@ -753,6 +982,19 @@ useEffect(() => {
   }
 
   function dealRound() {
+    if (pendingHandResult && handResultFlash === null && latestPendingHandResultRef.current !== null) {
+      if (handResultTimerRef.current) {
+        clearTimeout(handResultTimerRef.current);
+        handResultTimerRef.current = null;
+      }
+      setHandResultFlash(latestPendingHandResultRef.current);
+      setTimeout(() => {
+        setHandResultFlash(null);
+        setPendingHandResult(null);
+        latestPendingHandResultRef.current = null;
+      }, 900);
+    }
+
     playAudioFile(AUDIO.click, "click");
     if (blackjackBet <= 0) {
       setMessage("Add chips to place your bet.");
@@ -779,11 +1021,20 @@ useEffect(() => {
     setSplitCompletedHands([]);
     setHandReady(false);
     setDealerResolving(false);
+    setDealerUpcardVisible(false);
+    setDealerRevealCards([]);
     setPhase("dealing");
     if (spinBetOn || doubleBonusOn || splitBonusOn) setAutoChipDropKey((k) => k + 1);
     setMessage("Dealing cards...");
     setCredits((c) => c - roundCost);
     setLastWin(0);
+    roundBonusWinRef.current = 0;
+    suppressNextHandResultFlashRef.current = false;
+    if (handResultTimerRef.current) {
+      clearTimeout(handResultTimerRef.current);
+      handResultTimerRef.current = null;
+    }
+    setHandResultFlash(null);
 
     let workingDeck = deck.length < 16 ? buildDeck() : [...deck];
     let newPlayer = [];
@@ -824,14 +1075,50 @@ useEffect(() => {
       workingDeck = drawPlayer.remaining;
     }
     const drawDealer = drawFrom(workingDeck, 2);
-    const newDealer = drawDealer.drawn;
+    let newDealer = drawDealer.drawn;
     workingDeck = drawDealer.remaining;
+
+    // Demo pacing: avoid dealer natural blackjack/instant 21 too often so players see more feature play.
+    if (naturalBlackjack(newDealer) && Math.random() < 0.88) {
+      const replacement = findNonDealerBlackjackSecondCard(workingDeck, newDealer[0]);
+      if (replacement) {
+        workingDeck = [newDealer[1], ...removeCardsFromDeck(workingDeck, [replacement])];
+        newDealer = [newDealer[0], replacement];
+      }
+    }
     setDeck(workingDeck);
     setPlayer(newPlayer);
     setDealer(newDealer);
 
     setTimeout(() => {
+      setDealerUpcardVisible(true);
       setHandReady(true);
+
+      if (naturalBlackjack(newDealer)) {
+        const playerHasBlackjack = naturalBlackjack(newPlayer);
+        let payout = 0;
+        let netResult = 0;
+        let result = "Dealer has blackjack.";
+
+        if (playerHasBlackjack) {
+          payout = blackjackBet;
+          netResult = -sideBetCost;
+          result = "Dealer has blackjack. Player blackjack pushes. Bet returned.";
+        } else {
+          netResult = -(blackjackBet + sideBetCost);
+          result = "Dealer has blackjack. Player loses.";
+        }
+
+        setTimeout(() => {
+          setCredits((c) => c + payout);
+          setLastWin(netResult);
+          setPhase("complete");
+          setMessage(result);
+          setTimeout(() => showHandResult(playerHasBlackjack ? "push" : netResult), 450);
+        }, 650);
+        return;
+      }
+
       if (spinBetOn && naturalBlackjack(newPlayer)) {
         celebrate21AndTriggerBonus("Natural blackjack. 21 Spin bonus feature activated.");
       } else {
@@ -851,7 +1138,7 @@ useEffect(() => {
     setTimeout(() => {
       setBonusCinematic(false);
       setBonusGameVisible(true);
-    }, 850);
+    }, 1125);
   }
 
   function triggerMainBonus() {
@@ -902,13 +1189,17 @@ useEffect(() => {
     const total = handValue(nextPlayer);
     if (splitPlayActive) {
       if (total > 21) {
+        setSplitCurrentHandLocked(true);
+        setHandReady(false);
         setMessage(`Hand ${splitActiveHandIndex + 1} busts.`);
         setTimeout(() => finishSplitHand(nextPlayer, nextDeck), quickStopped ? 350 : 650);
       } else if (total === 21) {
+        setSplitCurrentHandLocked(true);
+        setHandReady(false);
         setMessage(`Hand ${splitActiveHandIndex + 1} has 21.`);
         setTimeout(() => finishSplitHand(nextPlayer, nextDeck), quickStopped ? 350 : 650);
       } else {
-        setMessage(`Hand ${splitActiveHandIndex + 1} has ${total}. Spin again or stand.`);
+        setMessage(`Hand ${splitActiveHandIndex + 1} has ${handDisplayValue(nextPlayer)}. Spin again or stand.`);
       }
       return;
     }
@@ -916,15 +1207,16 @@ useEffect(() => {
       celebrate21AndTriggerBonus("Player hand = 21. Bonus feature activated.");
     } else if (total > 21) {
       setLastWin(currentLoss);
+      showHandResultNow(currentLoss);
       setPhase("complete");
       setMessage("Player loses. BUSTED.");
     } else {
-      setMessage(`Player has ${total}. Spin again or stand.`);
+      setMessage(`Player has ${handDisplayValue(nextPlayer)}. Spin again or stand.`);
     }
   }
 
   function spinToHit() {
-    if (phase !== "player" || !handReady) return;
+    if (phase !== "player" || !handReady || (splitPlayActive && (splitAcesLocked || splitCurrentHandLocked || handValue(player) >= 21))) return;
 
     if (spinning) {
       if (spinHitAnticipationTimerRef.current) {
@@ -960,7 +1252,7 @@ useEffect(() => {
 
   function stand() {
     playAudioFile(AUDIO.standPress, "standPress");
-    if (phase !== "player" || !handReady) return;
+    if (phase !== "player" || !handReady || (splitPlayActive && splitCurrentHandLocked)) return;
     if (splitPlayActive) {
       finishSplitHand(player, deck);
       return;
@@ -969,17 +1261,34 @@ useEffect(() => {
   }
 
   function beginSplitHandPlay(firstHandFinal, secondHandFinal, nextDeck = deck) {
+    const splitAces = firstHandFinal?.[0]?.rank === "A" && secondHandFinal?.[0]?.rank === "A";
     setPlayer(firstHandFinal);
     setSplitHand(secondHandFinal);
     setSplitCompletedHands([]);
     setSplitHandNotice(null);
     setSplitActiveHandIndex(0);
-    setSplitPlayActive(true);
+    setSplitPlayActive(!splitAces);
+    setSplitAcesLocked(splitAces);
+    setSplitCurrentHandLocked(splitAces);
     setDeck(nextDeck);
     setPhase("player");
-    setHandReady(true);
+    setHandReady(!splitAces);
     setHitCards([]);
-    setMessage(`Playing hand 1. Hand has ${handValue(firstHandFinal)}. Spin or stand.`);
+
+    if (splitAces) {
+      setMessage("Split aces receive one card each. No more hits allowed.");
+      setTimeout(() => {
+        setSplitCompletedHands([firstHandFinal, secondHandFinal]);
+        setPlayer(firstHandFinal);
+        setSplitHand(secondHandFinal);
+        setSplitPlayActive(false);
+        setSplitActiveHandIndex(0);
+        setHandReady(false);
+        playDealerForSplit([firstHandFinal, secondHandFinal], nextDeck);
+      }, 950);
+    } else {
+      setMessage(`Playing hand 1. Hand has ${handDisplayValue(firstHandFinal)}. Spin or stand.`);
+    }
   }
 
   function finishSplitHand(finalHand, currentDeck = deck) {
@@ -988,6 +1297,7 @@ useEffect(() => {
       const completedFirst = finalHand;
       const second = splitHand || [];
       setSplitCompletedHands([completedFirst]);
+      setSplitCurrentHandLocked(true);
       setHandReady(false);
       setSplitHandNotice("HAND 1 COMPLETE");
       setMessage("Hand 1 complete.");
@@ -997,36 +1307,76 @@ useEffect(() => {
         setSplitActiveHandIndex(1);
         setDeck(currentDeck);
         setHitCards([]);
+        setSplitCurrentHandLocked(false);
         setHandReady(true);
         setSplitHandNotice(null);
-        setMessage(`Playing hand 2. Hand has ${handValue(second)}. Spin or stand.`);
+        setMessage(`Playing hand 2. Hand has ${handDisplayValue(second)}. Spin or stand.`);
       }, 750);
       return;
     }
 
     const completedHands = [...splitCompletedHands, finalHand];
-    setSplitPlayActive(false);
-    setSplitActiveHandIndex(0);
-    setSplitCompletedHands(completedHands);
-    setPlayer(completedHands[0] || []);
-    setSplitHand(completedHands[1] || []);
-    setHitCards([]);
-    playDealerForSplit(completedHands, currentDeck);
+    setSplitCurrentHandLocked(true);
+    setHandReady(false);
+    setSplitHandNotice("HAND 2 COMPLETE");
+    setMessage("Hand 2 complete.");
+    setTimeout(() => {
+      setSplitPlayActive(false);
+      setSplitActiveHandIndex(0);
+      setSplitCurrentHandLocked(false);
+      setSplitCompletedHands(completedHands);
+      setPlayer(completedHands[0] || []);
+      setSplitHand(completedHands[1] || []);
+      setHitCards([]);
+      setSplitHandNotice(null);
+      playDealerForSplit(completedHands, currentDeck);
+    }, 750);
   }
 
   function playDealerForSplit(finalHands, currentDeck = deck) {
     setDealerResolving(true);
-    setTimeout(() => setDealerResolving(false), 1400);
+    setDealerUpcardVisible(true);
+
     let nextDealer = [...dealer];
     let nextDeck = [...currentDeck];
-    while (handValue(nextDealer) < 17) {
-      const draw = drawFrom(nextDeck, 1);
-      nextDealer = [...nextDealer, draw.drawn[0]];
-      nextDeck = draw.remaining;
-    }
-    setDealer(nextDealer);
-    setDeck(nextDeck);
-    resolveSplitBlackjack(finalHands, nextDealer);
+
+    const revealSequence = async () => {
+      setDealerRevealCards([nextDealer[0]].filter(Boolean));
+      await new Promise((resolve) => setTimeout(resolve, 450));
+
+      if (nextDealer[1]) {
+        setDealerRevealCards([nextDealer[0], nextDealer[1]]);
+        await new Promise((resolve) => setTimeout(resolve, 550));
+      }
+
+      while (handValue(nextDealer) < 17) {
+        const draw = drawFrom(nextDeck, 1);
+        let newCard = draw.drawn[0];
+        nextDeck = draw.remaining;
+        if (handValue([...nextDealer, newCard]) === 21 && Math.random() < 0.65) {
+          const softerDealerCard = findDealerHitAvoidingExact21(nextDeck, nextDealer);
+          if (softerDealerCard) {
+            nextDeck = [newCard, ...removeCardsFromDeck(nextDeck, [softerDealerCard])];
+            newCard = softerDealerCard;
+          }
+        }
+        nextDealer = [...nextDealer, newCard];
+        setDealer(nextDealer);
+        setDealerRevealCards([...nextDealer]);
+        playAudioFile(AUDIO.card, "card");
+        await new Promise((resolve) => setTimeout(resolve, 650));
+      }
+
+      setDealer(nextDealer);
+      setDeck(nextDeck);
+      setTimeout(() => {
+        setDealerResolving(false);
+        setDealerRevealCards([]);
+        resolveSplitBlackjack(finalHands, nextDealer);
+      }, 175);
+    };
+
+    revealSequence();
   }
 
   function resolveSplitBlackjack(finalHands, finalDealer) {
@@ -1049,8 +1399,10 @@ useEffect(() => {
       return `Hand ${index + 1} ${label}`;
     });
     const netResult = payoutTotal - blackjackBet * finalHands.length - sideBetCost;
+    const allPush = dealerScore <= 21 && finalHands.length > 0 && finalHands.every((hand) => handValue(hand) <= 21 && handValue(hand) === dealerScore);
     setCredits((c) => c + payoutTotal);
-    setLastWin(netResult);
+    setLastWin((w) => w + netResult);
+    showHandResult(allPush ? "push" : roundBonusWinRef.current + netResult);
     setPhase("complete");
     setMessage(`${results.join(". ")}. Dealer has ${dealerScore}.`);
   }
@@ -1077,6 +1429,7 @@ useEffect(() => {
     setDeck(draw.remaining);
     setPlayer(firstHand);
     setSplitHand(secondHandBase);
+    setSplitAcesLocked(originalLeft.rank === "A" && originalRight.rank === "A");
     setPendingSplitHand({ firstHandFinal, secondHandFinal, cardA: draw.drawn[0], cardB: draw.drawn[1], nextDeck: draw.remaining });
 
     if (splitBonusOn) {
@@ -1092,7 +1445,7 @@ useEffect(() => {
   function doubleDown() {
     playAudioFile(AUDIO.doubleDownPress, "doubleDownPress");
     if (!canDoubleDown) {
-      setMessage("Only active on player 10 or 11.");
+      setMessage("Only active on player 10 or 11, including soft 10 or 11.");
       return;
     }
     setCredits((c) => c - blackjackBet);
@@ -1118,6 +1471,7 @@ useEffect(() => {
         setPlayer(nextPlayer);
         setHitCards((h) => [...h, card]);
         setLastWin(-(blackjackBet * 2 + sideBetCost));
+        showHandResultNow(-(blackjackBet * 2 + sideBetCost));
         setPhase("complete");
         setMessage("Player loses. BUSTED.");
       } else if (handValue(nextPlayer) === 21 && spinBetOn) {
@@ -1129,22 +1483,53 @@ useEffect(() => {
         setHitCards((h) => [...h, card]);
         playDealer(nextPlayer, nextDeck, blackjackBet * 2);
       }
-    }, 900);
+    }, 550);
   }
 
   function playDealer(finalPlayer = player, currentDeck = deck, effectiveBet = blackjackBet) {
     setDealerResolving(true);
-    setTimeout(() => setDealerResolving(false), 1400);
+    setDealerUpcardVisible(true);
+
     let nextDealer = [...dealer];
     let nextDeck = [...currentDeck];
-    while (handValue(nextDealer) < 17) {
-      const draw = drawFrom(nextDeck, 1);
-      nextDealer = [...nextDealer, draw.drawn[0]];
-      nextDeck = draw.remaining;
-    }
-    setDealer(nextDealer);
-    setDeck(nextDeck);
-    resolveBlackjack(finalPlayer, nextDealer, effectiveBet);
+
+    const revealSequence = async () => {
+      setDealerRevealCards([nextDealer[0]].filter(Boolean));
+      await new Promise((resolve) => setTimeout(resolve, 450));
+
+      if (nextDealer[1]) {
+        setDealerRevealCards([nextDealer[0], nextDealer[1]]);
+        await new Promise((resolve) => setTimeout(resolve, 550));
+      }
+
+      while (handValue(nextDealer) < 17) {
+        const draw = drawFrom(nextDeck, 1);
+        let newCard = draw.drawn[0];
+        nextDeck = draw.remaining;
+        if (handValue([...nextDealer, newCard]) === 21 && Math.random() < 0.65) {
+          const softerDealerCard = findDealerHitAvoidingExact21(nextDeck, nextDealer);
+          if (softerDealerCard) {
+            nextDeck = [newCard, ...removeCardsFromDeck(nextDeck, [softerDealerCard])];
+            newCard = softerDealerCard;
+          }
+        }
+        nextDealer = [...nextDealer, newCard];
+        setDealer(nextDealer);
+        setDealerRevealCards([...nextDealer]);
+        playAudioFile(AUDIO.card, "card");
+        await new Promise((resolve) => setTimeout(resolve, 650));
+      }
+
+      setDealer(nextDealer);
+      setDeck(nextDeck);
+      setTimeout(() => {
+        setDealerResolving(false);
+        setDealerRevealCards([]);
+        resolveBlackjack(finalPlayer, nextDealer, effectiveBet);
+      }, 175);
+    };
+
+    revealSequence();
   }
 
   function resolveBlackjack(finalPlayer, finalDealer, effectiveBet = blackjackBet) {
@@ -1153,30 +1538,42 @@ useEffect(() => {
     let payout = 0;
     let result = "";
     let netResult = 0;
+    let resultKind = ""; 
     if (p > 21) {
       result = "Player loses. BUSTED.";
+      resultKind = "loss";
       netResult = -(effectiveBet + sideBetCost);
     } else if (naturalBlackjack(finalPlayer)) {
       const blackjackProfit = Math.floor(effectiveBet * 1.2);
       payout = effectiveBet + blackjackProfit;
       result = `Blackjack pays 6:5. Paid ${money(payout)}.`;
+      resultKind = "win";
       netResult = payout - effectiveBet - sideBetCost;
     } else if (d > 21 || p > d) {
       payout = effectiveBet * 2;
       result = `Player wins. Paid ${money(payout)}.`;
+      resultKind = "win";
       netResult = payout - effectiveBet - sideBetCost;
     } else if (p === d) {
       payout = effectiveBet;
       result = "Push. Bet returned.";
+      resultKind = "push";
       netResult = -sideBetCost;
     } else {
       result = "Player loses.";
+      resultKind = "loss";
       netResult = -(effectiveBet + sideBetCost);
     }
     setCredits((c) => c + payout);
-    setLastWin(netResult);
+    setLastWin((w) => w + netResult);
+    if (resultKind === "push") {
+      showHandResult("push");
+      setMessage(result);
+    } else {
+      showHandResult(roundBonusWinRef.current + netResult);
+      setMessage(result);
+    }
     setPhase("complete");
-    setMessage(result);
   }
 
   function finishWheelSpin(quickStopped = false) {
@@ -1291,9 +1688,16 @@ useEffect(() => {
     setCredits((c) => c + prize);
     setLastWin((w) => w + prize);
 
+    if (awardedExtraSpins > 0) {
+      setFreeSpinExtraFlash(awardedExtraSpins);
+      setTimeout(() => setFreeSpinExtraFlash(null), 900);
+    }
+
     if (prize > 0) {
       setFreeSpinPrizeFlash(prize);
-      if (prize >= 1000) {
+      if (prize >= PROGRESSIVE_JACKPOT) {
+        showProgressiveWinner(prize, 3000);
+      } else if (prize >= 1000) {
         showBigWinner(prize, 900);
       }
       setTimeout(() => setFreeSpinPrizeFlash(null), 900);
@@ -1304,7 +1708,9 @@ useEffect(() => {
       setTimeout(() => {
         setFreeSpinPrizeFlash(null);
         setFreeSpinFinalFlash(nextFreeSpinTotal);
-        if (nextFreeSpinTotal >= 1000) {
+        if (nextFreeSpinTotal >= PROGRESSIVE_JACKPOT) {
+          showProgressiveWinner(nextFreeSpinTotal, 3400);
+        } else if (nextFreeSpinTotal >= 1000) {
           showBigWinner(nextFreeSpinTotal, 1800);
         }
         scheduleBonusReturn(null, 3000);
@@ -1314,6 +1720,10 @@ useEffect(() => {
 
   function playFreeSpin() {
     if (bonusType !== "FREE SPINS FEATURE" || freeSpinsLeft <= 0) return;
+
+    setFreeSpinPrizeFlash(null);
+    setFreeSpinExtraFlash(null);
+    setFreeSpinFinalFlash(null);
     if (freeSpinSpinning) {
       if (freeSpinTimerRef.current) {
         clearTimeout(freeSpinTimerRef.current);
@@ -1327,6 +1737,7 @@ useEffect(() => {
     setFreeSpinQuickStopJolt(false);
     setFreeSpinSpinning(true);
     setFreeSpinPrizeFlash(null);
+    setFreeSpinExtraFlash(null);
     setFreeSpinFinalFlash(null);
     setMessage("Free Spins Feature reels are spinning...");
     freeSpinTimerRef.current = setTimeout(() => {
@@ -1448,6 +1859,7 @@ useEffect(() => {
     setBonusGameVisible(false);
     setBonusResolved(false);
     setFreeSpinPrizeFlash(null);
+    setFreeSpinExtraFlash(null);
     setFreeSpinFinalFlash(null);
     setBonusIntro(false);
     const action = postBonusActionRef.current;
@@ -1516,6 +1928,25 @@ useEffect(() => {
             box-shadow: 0 0 20px rgba(250,204,21,.95);
           }
         }
+        .slotjack-stage,
+        .slotjack-stage * {
+          user-select: none;
+          -webkit-user-select: none;
+        }
+
+        .slotjack-stage button,
+        .slotjack-stage img,
+        .slotjack-stage div {
+          -webkit-tap-highlight-color: transparent;
+        }
+        .slotjack-stage button:focus,
+        .slotjack-stage button:focus-visible,
+        .slotjack-stage img:focus,
+        .slotjack-stage img:focus-visible,
+        .slotjack-stage div:focus,
+        .slotjack-stage div:focus-visible {
+          outline: none !important;
+        }
       `}</style>
 
      <div
@@ -1527,12 +1958,15 @@ useEffect(() => {
         <AnimatePresence><BonusAmountFlash amount={bonusFlashAmount} /></AnimatePresence>
         <AnimatePresence><TwentyOneFlash show={twentyOneFlash} /></AnimatePresence>
         <AnimatePresence><BigWinnerFlash amount={bigWinnerAmount} /></AnimatePresence>
+        <AnimatePresence><ProgressiveWinnerFlash amount={progressiveWinnerAmount} /></AnimatePresence>
+        <AnimatePresence><ConfettiBurst show={showConfetti} /></AnimatePresence>
+        <AnimatePresence><HandResultFlash amount={handResultFlash} /></AnimatePresence>
 
         <img src="/assets/dealer-shoe.png" className="absolute top-[-7.8%] right-[-4%] z-10 w-[330px] h-auto drop-shadow-2xl" draggable="false" />
 
         {bonusCinematic && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 z-[65] bg-black/60 grid place-items-center pointer-events-none">
-            <motion.div initial={{ scale: 0.4, rotate: -8 }} animate={{ scale: [0.4, 1.2, 1], rotate: 0 }} transition={{ duration: 0.55 }} className="text-yellow-300 font-black text-7xl drop-shadow-[0_0_45px_rgba(250,204,21,.9)]">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 z-[30000] bg-black/60 grid place-items-center pointer-events-none">
+            <motion.div initial={{ scale: 0.4, rotate: -8 }} animate={{ scale: [0.4, 1.2, 1], rotate: 0 }} transition={{ duration: 0.55 }} className="text-yellow-300 font-black text-[120px] drop-shadow-[0_0_80px_rgba(250,204,21,1)]">
               BONUS ACTIVATED
             </motion.div>
           </motion.div>
@@ -1552,11 +1986,29 @@ useEffect(() => {
           <div>Last Win: {money(lastWin)}</div>
         </div>
 
-        <div onMouseLeave={() => setSuppressRulesHover(false)} className="group absolute top-[14.6%] left-[17.2%] z-[300] pointer-events-auto">
+        <div onMouseLeave={() => setSuppressOddsHover(false)} className="group absolute top-[19.5%] left-[17.2%] z-[300] pointer-events-auto">
+          <button
+            type="button"
+            onClick={() => { setOddsOpen((v) => !v); setSuppressOddsHover(true); }}
+            className="w-[82px] text-center rounded-full bg-black/80 border-2 border-yellow-300 px-4 py-2 text-yellow-300 text-sm font-black tracking-widest shadow-[0_0_18px_rgba(250,204,21,.45)] hover:scale-105 active:scale-95 transition outline-none focus:outline-none focus-visible:outline-none focus:ring-0"
+          >
+            ODDS
+          </button>
+          <div className={`absolute left-0 top-[48px] ${oddsOpen ? "block" : suppressOddsHover ? "hidden" : "hidden group-hover:block"} w-[720px] rounded-3xl bg-black/95 border-4 border-yellow-300 p-7 text-left text-yellow-100 shadow-[0_0_45px_rgba(250,204,21,.75)] z-[30000] pointer-events-auto`}>
+            <div className="mb-4 text-yellow-300 text-3xl font-black tracking-widest">ODDS / RTP NOTE</div>
+            <ol className="space-y-5 text-xl font-black leading-snug list-decimal list-inside">
+              <li>The game is currently tuned to have favorable player outcomes and frequent 21s to show off features of the game.</li>
+              <li>The game can be tuned to traditional blackjack probabilities and return to player will result in a house edge due to the player sidebet costs and player deviation from basic strategy in attempts to reach 21 bonus.</li>
+              <li>Sidebets only pay out in 21, split, or double down situations, and prize frequency in the side bet bonus games can be adjusted to find a return to player that balances house edge with player engagement.</li>
+            </ol>
+          </div>
+        </div>
+
+        <div onMouseLeave={() => setSuppressRulesHover(false)} className="group absolute top-[11.0%] left-[17.2%] z-[30000] pointer-events-auto">
           <button
             type="button"
             onClick={() => { setRulesOpen((v) => !v); setSuppressRulesHover(true); }}
-            className="rounded-full bg-black/80 border-2 border-yellow-300 px-4 py-2 text-yellow-300 text-sm font-black tracking-widest shadow-[0_0_18px_rgba(250,204,21,.45)] hover:scale-105 active:scale-95 transition"
+            className="w-[82px] text-center rounded-full bg-black/80 border-2 border-yellow-300 px-4 py-2 text-yellow-300 text-sm font-black tracking-widest shadow-[0_0_18px_rgba(250,204,21,.45)] hover:scale-105 active:scale-95 transition outline-none focus:outline-none focus-visible:outline-none focus:ring-0"
           >
             RULES
           </button>
@@ -1568,7 +2020,7 @@ useEffect(() => {
               <li>With "21 spin" sidebet active, any player 21 activates a bonus game.</li>
               <li>With "double down double up" sidebet active, any 10 or 11 (except blackjack) can be doubled down and results in a bonus game.</li>
               <li>With "split screen" sidebet active, any hands the player splits will result in a bonus game.</li>
-              <li>10s cannot be split, no resplitting aces, no double after split.</li>
+              <li>10s cannot be split, no re-splitting of any cards, no double after split.</li>
               <li>There is no surrender.</li>
               <li>Blackjack pays 6:5.</li>
             </ol>
@@ -1578,7 +2030,7 @@ useEffect(() => {
         <button
           type="button"
           onClick={() => setSoundEnabled((v) => !v)}
-          className="absolute top-[14.2%] right-[5%] z-[140] rounded-full bg-black/80 border-2 border-yellow-300 px-4 py-2 text-yellow-300 text-sm font-black tracking-widest shadow-[0_0_18px_rgba(250,204,21,.45)] hover:scale-105 active:scale-95 transition"
+          className="absolute top-[14.2%] right-[5%] z-[140] rounded-full bg-black/80 border-2 border-yellow-300 px-4 py-2 text-yellow-300 text-sm font-black tracking-widest shadow-[0_0_18px_rgba(250,204,21,.45)] hover:scale-105 active:scale-95 transition outline-none focus:outline-none focus-visible:outline-none focus:ring-0"
         >
           SOUND {soundEnabled ? "ON" : "OFF"}
         </button>
@@ -1674,14 +2126,21 @@ useEffect(() => {
         <div className="absolute top-[26.75%] left-[49.5%] -translate-x-1/2 z-20 flex flex-col items-center transition">
           <div className={`mb-2 min-w-[116px] text-center rounded-xl bg-black/75 border px-[17px] py-[3px] text-yellow-300 font-black text-sm shadow-xl transition ${dealerResolving ? "border-yellow-300 animate-[edgeGlowPulse_2.2s_infinite]" : "border-yellow-300/60"}`}>DEALER HAND</div>
           <div className="flex gap-3 min-h-[105px] rounded-xl transition">
-            {dealer.length ? dealer.map((card, i) => <CardFace key={`${card.rank}${card.suit}-${i}`} card={card} hidden={(phase === "player" || phase === "bonus") && i === 1} delay={i === 0 ? 0.18 : 0.54} />) : null}
+            {(dealerResolving ? dealerRevealCards : dealer).length ? (dealerResolving ? dealerRevealCards : dealer).map((card, i) => (
+              <CardFace
+                key={`${card.rank}${card.suit}-${i}`}
+                card={card}
+                hidden={!dealerResolving && phase !== "complete" ? i === 1 : false}
+                delay={dealerResolving ? 0 : (i === 0 ? 0.18 : 0.54)}
+              />
+            )) : null}
           </div>
           <div className={`mt-1 bg-black/65 border rounded-full px-3 py-1 font-black text-yellow-300 text-sm transition ${dealerResolving ? "border-yellow-300 animate-[edgeGlowPulse_2.2s_infinite]" : "border-yellow-300/50"}`}>
-            {dealer.length ? ((phase === "player" || phase === "bonus") ? cardValue(dealer[0]) : dealerTotal) : "—"}
+            {dealer.length ? (dealerResolving ? (dealerRevealCards.length ? handValue(dealerRevealCards) : handDisplayValue([dealer[0]])) : phase === "complete" ? dealerTotal : handDisplayValue([dealer[0]])) : "—"}
           </div>
         </div>
 
-        <div className={`absolute top-[54.5%] ${splitHand ? "left-[40%]" : "left-[49.5%]"} -translate-x-1/2 z-20 flex flex-col items-center transition`}>
+        <div className={`absolute top-[54.5%] ${splitHand ? "left-[40%]" : "left-[49.5%]"} -translate-x-1/2 ${splitHand ? "z-[120]" : "z-20"} flex flex-col items-center transition`}>
           {splitPlayActive && splitActiveHandIndex === 0 ? (
             <motion.div
               initial={{ opacity: 0, y: -8 }}
@@ -1746,17 +2205,17 @@ useEffect(() => {
         </AnimatePresence>
 
         <div className="absolute top-[40.5%] right-[1.5%] z-20 w-[38%] max-w-[610px]">
-          <div className="absolute -top-14 left-1/2 -translate-x-1/2 whitespace-nowrap text-yellow-300 font-black text-[46px] tracking-[0.04em] font-extrabold drop-shadow-[0_0_28px_rgba(250,204,21,1)]">SPIN TO HIT</div>
+          <div className="absolute -top-16 left-1/2 -translate-x-1/2 whitespace-nowrap text-yellow-300 font-black text-[46px] tracking-[0.04em] font-extrabold drop-shadow-[0_0_28px_rgba(250,204,21,1)]">SPIN TO HIT</div>
           <img src="/assets/spin-to-hit-panel.png" className={`w-full drop-shadow-2xl ${spinning ? "animate-pulse" : ""} ${anticipatingSpin ? "scale-105 brightness-125" : ""}`} draggable="false" />
           <motion.div
             animate={spinHitQuickStopJolt ? { x: [0, -12, 10, -6, 3, 0], rotate: [0, -1.4, 1.1, -0.6, 0.2, 0] } : { x: 0, rotate: 0 }}
             transition={{ duration: 0.32, ease: "easeOut" }}
-            className="absolute left-[7.7%] right-[7.5%] top-[16.8%] h-[60%] grid grid-cols-5 gap-2 origin-center"
+            className="absolute left-[7.7%] right-[7.5%] top-[16.25%] h-[60%] grid grid-cols-5 gap-2 origin-center"
           >
             {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className={`rounded-md grid place-items-center font-black text-white text-xl transform scale-x-[0.86] scale-y-[0.90] translate-y-[3px] origin-center ${hitCards[i] ? "bg-white" : "bg-transparent"}`}>
+              <div key={i} className={`rounded-md grid place-items-center font-black text-white transform scale-x-[0.86] scale-y-[0.885] translate-y-[3px] origin-bottom ${hitCards[i] ? "bg-white" : "bg-transparent"}`}>
                 {hitCards[i] ? (
-                  <motion.span initial={{ scale: 0.2, opacity: 0, rotateY: 90 }} animate={{ scale: 1, opacity: 1, rotateY: 0 }} transition={{ type: "spring", stiffness: 180, damping: 16 }} className={`${hitCards[i].suit === "♥" || hitCards[i].suit === "♦" ? "text-red-600" : "text-black"}`}>
+                  <motion.span initial={{ scale: 0.2, opacity: 0, rotateY: 90 }} animate={{ scale: 1, opacity: 1, rotateY: 0 }} transition={{ type: "spring", stiffness: 180, damping: 16 }} className={`${hitCards[i].suit === "♥" || hitCards[i].suit === "♦" ? "text-red-600" : "text-black"} text-[26px] leading-none font-black tracking-[-0.04em]`}>
                     {hitCards[i].rank}{hitCards[i].suit}
                   </motion.span>
                 ) : spinning && i === hitCards.length ? <SpinningReelCell active /> : ""}
@@ -1766,7 +2225,7 @@ useEffect(() => {
         </div>
 
         <div
-          className="absolute top-[58.6%] right-[17%] z-[110] pointer-events-auto"
+          className="absolute top-[58.6%] right-[17%] z-[500] pointer-events-auto"
           onPointerDown={() => {
             if (phase === "idle" || phase === "complete") {
               warmAudioCache();
@@ -1775,7 +2234,7 @@ useEffect(() => {
             }
           }}
         >
-          {phase === "idle" || phase === "complete" ? <ImgButton src="/assets/deal-button.png" onClick={dealRound} disabled={false} className="w-[455px] h-[205px] drop-shadow-[0_0_24px_rgba(250,204,21,.85)]" glow="gold" /> : null}
+          {phase === "idle" || phase === "complete" ? <ImgButton src="/assets/deal-button.png" onClick={dealRound} disabled={false} className="z-[520] w-[482px] h-[217px] drop-shadow-[0_0_26px_rgba(250,204,21,.9)]" glow="gold" /> : null}
         </div>
 
         <div className="absolute bottom-[3.2%] left-[50%] -translate-x-1/2 z-[95] flex items-center justify-center gap-3 pointer-events-auto">
@@ -1784,7 +2243,7 @@ useEffect(() => {
             <ImgButton
               src="/assets/spin-button.png"
               onClick={spinToHit}
-              disabled={phase !== "player" || !handReady}
+              disabled={phase !== "player" || !handReady || (splitPlayActive && (splitCurrentHandLocked || splitAcesLocked || handValue(player) >= 21))}
               className={`w-[205px] h-[205px] drop-shadow-[0_0_18px_rgba(239,68,68,.65)] will-change-transform ${
                 phase === "player" && handReady && spinning
                   ? anticipatingSpin
@@ -1852,6 +2311,9 @@ useEffect(() => {
                 <MiniSpinDevice title="HIT CARD REEL" value={sideBonus.revealed ? `${sideBonus.card.rank}${sideBonus.card.suit}` : null} spinning={sideBonus.spinning} />
                 <MiniSpinDevice title="BONUS AMOUNT REEL" value={sideBonus.revealed ? money(sideBonus.amount) : null} spinning={sideBonus.spinning} type="amount" />
                 <button onClick={startDoubleSideBonus} disabled={sideBonus.revealed} className="bg-yellow-400 text-black px-6 py-3 rounded-xl font-black disabled:opacity-40">{sideBonus.spinning ? "QUICK STOP" : "SPIN DOUBLE BONUS"}</button>
+                <div className="mx-auto max-w-[430px] rounded-xl bg-black/55 border border-yellow-300/50 px-4 py-2 text-yellow-100 text-sm font-black leading-snug shadow-[0_0_18px_rgba(250,204,21,.25)]">
+                  Spin to reveal the hit card and bonus prize for double down hand.
+                </div>
               </div>
             )}
 
@@ -1866,6 +2328,9 @@ useEffect(() => {
                   <MiniSpinDevice title="BONUS 2" value={sideBonus.revealed ? money(sideBonus.amountB) : null} spinning={sideBonus.spinning} type="amount" />
                 </div>
                 <button onClick={startSplitSideBonus} disabled={sideBonus.revealed} className="bg-yellow-400 text-black px-6 py-3 rounded-xl font-black disabled:opacity-40">{sideBonus.spinning ? "QUICK STOP" : "SPIN SPLIT SCREEN"}</button>
+                <div className="mx-auto max-w-[430px] rounded-xl bg-black/55 border border-yellow-300/50 px-4 py-2 text-yellow-100 text-sm font-black leading-snug shadow-[0_0_18px_rgba(250,204,21,.25)]">
+                  Spin to reveal the hit card and bonus prize for each split hand.
+                </div>
               </div>
             )}
 
@@ -1969,7 +2434,7 @@ useEffect(() => {
                   })}
                 </div>
                 <div className="rounded-xl bg-black/50 border border-yellow-300/60 p-2 text-yellow-300 font-black">
-                  {hiddenTargetRank ? `Match ${hiddenTargetRank} exactly | Matches: ${Math.max(0, hiddenPicks.length - 1)}` : "Pick your first card to set the target."}
+                  {hiddenTargetRank ? `Match ${hiddenTargetRank} exactly | Matches: ${Math.max(0, hiddenPicks.length - 1)}` : "Pick a card then find its match in each column."}
                 </div>
               </div>
             )}
@@ -2000,6 +2465,16 @@ useEffect(() => {
                     );
                   })}
                 </motion.div>
+                <AnimatePresence>{freeSpinExtraFlash ? (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.55, x: -18 }}
+                    animate={{ opacity: 1, scale: [0.55, 1.12, 1], x: 0 }}
+                    exit={{ opacity: 0, scale: 0.8 }}
+                    className="absolute left-[7%] bottom-[16%] z-[20001] rounded-2xl bg-green-500 border-4 border-white px-5 py-3 text-black text-3xl font-black shadow-[0_0_45px_rgba(34,197,94,.9)] pointer-events-none"
+                  >
+                    {`+${freeSpinExtraFlash} FREE SPINS`}
+                  </motion.div>
+                ) : null}</AnimatePresence>
                 <AnimatePresence>
                   {freeSpinPrizeFlash ? (
                     <motion.div
