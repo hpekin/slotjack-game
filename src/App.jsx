@@ -60,6 +60,7 @@ const AUDIO = {
   standPress: "/assets/audio/stand_press.mp3",
   spinPress: "/assets/audio/spin_press.mp3",
   quickStop: "/assets/audio/quick_stop.mp3",
+  regularWin: "/assets/audio/regular_win.mp3",
 };
 
 function playTone(kind = "click") {
@@ -137,6 +138,7 @@ function playAudioFile(src, fallbackKind = "click") {
     standPress: 0.22,
     spinPress: 0.22,
     quickStop: 0.23,
+    regularWin: 0.24,
   };
 
   try {
@@ -798,7 +800,10 @@ export default function SlotJackPrototype() {
 
     if (handResultTimerRef.current) clearTimeout(handResultTimerRef.current);
     handResultTimerRef.current = setTimeout(() => {
-      setHandResultFlash(pendingHandResult.amount);
+      const resultAmount = pendingHandResult.amount;
+      const isRegularWin = typeof resultAmount === "number" && resultAmount > 0 && roundBonusWinRef.current <= 0;
+      if (isRegularWin) playAudioFile(AUDIO.regularWin, "regularWin");
+      setHandResultFlash(resultAmount);
       handResultTimerRef.current = setTimeout(() => {
         setHandResultFlash(null);
     setPendingHandResult(null);
@@ -987,7 +992,10 @@ useEffect(() => {
         clearTimeout(handResultTimerRef.current);
         handResultTimerRef.current = null;
       }
-      setHandResultFlash(latestPendingHandResultRef.current);
+      const resultAmount = latestPendingHandResultRef.current;
+      const isRegularWin = typeof resultAmount === "number" && resultAmount > 0 && roundBonusWinRef.current <= 0;
+      if (isRegularWin) playAudioFile(AUDIO.regularWin, "regularWin");
+      setHandResultFlash(resultAmount);
       setTimeout(() => {
         setHandResultFlash(null);
         setPendingHandResult(null);
