@@ -1881,36 +1881,6 @@ useEffect(() => {
       </div>
     </div>
       <style>{`
-        html, body, #root {
-          margin: 0;
-          padding: 0;
-          width: 100%;
-          height: 100%;
-          min-height: 100%;
-          overflow: hidden;
-          background: #000;
-        }
-
-        .slotjack-shell {
-          position: fixed;
-          inset: 0;
-          width: 100vw;
-          height: 100vh;
-          overflow: hidden;
-          background: #000;
-          touch-action: manipulation;
-        }
-
-        .slotjack-stage {
-          position: absolute;
-          left: 50%;
-          top: 50%;
-          width: 1600px;
-          height: 900px;
-          transform-origin: center center;
-          overflow: hidden;
-        }
-
         @keyframes buttonPulse {
           0%, 100% {
             transform: scale(1);
