@@ -660,7 +660,7 @@ export default function SlotJackPrototype() {
   const [pendingDoubleBet, setPendingDoubleBet] = useState(null);
 
   const [phase, setPhase] = useState("idle");
-  const [message, setMessage] = useState("Place your bet, turn on 21 Spin, then deal.");
+  const [message, setMessage] = useState("21 spin side bet is active. Deal hand and spin to hit.");
   const [lastWin, setLastWin] = useState(0);
   const [spinning, setSpinning] = useState(false);
   const [anticipatingSpin, setAnticipatingSpin] = useState(false);
