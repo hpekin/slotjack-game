@@ -371,7 +371,7 @@ function SpinningReelCell({ active }) {
   );
 }
 
-function ImgButton({ src, onClick, disabled, className = "", glow = "gold" }) {
+function ImgButton({ src, onClick, disabled, className = "", glow = "gold", noHover = false }) {
   const glowClass = glow === "blue"
     ? "drop-shadow-[0_0_18px_rgba(34,211,238,.55)]"
     : glow === "red"
@@ -385,7 +385,7 @@ function ImgButton({ src, onClick, disabled, className = "", glow = "gold" }) {
       onClick={onClick}
       disabled={disabled}
       className={`relative z-[120] pointer-events-auto bg-transparent border-0 p-0 outline-none focus:outline-none focus-visible:outline-none focus:ring-0 transition-transform duration-200 ${
-        disabled ? "opacity-30 grayscale cursor-not-allowed" : `cursor-pointer hover:scale-105 active:scale-95 ${glowClass}`
+        disabled ? "opacity-30 grayscale cursor-not-allowed" : `cursor-pointer ${noHover ? "" : "hover:scale-105 active:scale-95"} ${glowClass}`
       } ${className}`}
     >
       <img src={src} draggable="false" className="relative z-10 w-full h-full object-contain pointer-events-none select-none" />
@@ -1879,7 +1879,14 @@ useEffect(() => {
     }
   }
 
- return (
+ const dealHandPulseClass =
+    phase === "idle"
+      ? "animate-[dealHandStrongPulse_1.35s_cubic-bezier(0.4,0,0.2,1)_infinite]"
+      : phase === "complete"
+        ? "animate-[dealHandSoftPulse_1.95s_cubic-bezier(0.4,0,0.2,1)_infinite]"
+        : "";
+
+  return (
   <div className="slotjack-shell text-white">
     <div className="rotate-overlay">
       <div className="rotate-card">
@@ -1928,6 +1935,25 @@ useEffect(() => {
             filter: brightness(1.16);
           }
         }
+
+        @keyframes dealHandStrongPulse {
+          0%, 100% {
+            transform: scale(1);
+          }
+          50% {
+            transform: scale(1.045);
+          }
+        }
+
+        @keyframes dealHandSoftPulse {
+          0%, 100% {
+            transform: scale(1);
+          }
+          50% {
+            transform: scale(1.036);
+          }
+        }
+
         @keyframes edgeGlowPulse {
           0%, 100% {
             box-shadow: 0 0 10px rgba(250,204,21,.55);
@@ -2043,8 +2069,8 @@ useEffect(() => {
           SOUND {soundEnabled ? "ON" : "OFF"}
         </button>
 
-        <div className="absolute left-[1.4%] top-[32%] z-[70] pointer-events-auto w-[760px] h-[390px]">
-          <div className="absolute left-[105px] top-[-32px] z-[35] text-yellow-300 font-black text-xl tracking-[0.22em] drop-shadow-[0_0_10px_rgba(250,204,21,.85)] pointer-events-none">
+        <div className="absolute left-[2.2%] top-[32%] z-[70] pointer-events-auto w-[760px] h-[390px]">
+          <div className="absolute left-[112px] top-[-32px] z-[35] text-yellow-300 font-black text-xl tracking-[0.22em] drop-shadow-[0_0_10px_rgba(250,204,21,.85)] pointer-events-none">
             SIDE BETS
           </div>
           <SideBetMarker
@@ -2212,7 +2238,7 @@ useEffect(() => {
           ) : null}
         </AnimatePresence>
 
-        <div className="absolute top-[40.5%] right-[1.5%] z-20 w-[38%] max-w-[610px]">
+        <div className="absolute top-[38.9%] right-[1.5%] z-20 w-[38%] max-w-[610px]">
           <div className="absolute -top-16 left-1/2 -translate-x-1/2 whitespace-nowrap text-yellow-300 font-black text-[46px] tracking-[0.04em] font-extrabold drop-shadow-[0_0_28px_rgba(250,204,21,1)]">SPIN TO HIT</div>
           <img src="/assets/spin-to-hit-panel.png" className={`w-full drop-shadow-2xl ${spinning ? "animate-pulse" : ""} ${anticipatingSpin ? "scale-105 brightness-125" : ""}`} draggable="false" />
           <motion.div
@@ -2233,7 +2259,7 @@ useEffect(() => {
         </div>
 
         <div
-          className="absolute top-[58.6%] right-[17%] z-[500] pointer-events-auto"
+          className="absolute top-[57.2%] right-[15.35%] z-[500] pointer-events-auto"
           onPointerDown={() => {
             if (phase === "idle" || phase === "complete") {
               warmAudioCache();
@@ -2242,7 +2268,7 @@ useEffect(() => {
             }
           }}
         >
-          {phase === "idle" || phase === "complete" ? <ImgButton src="/assets/deal-button.png" onClick={dealRound} disabled={false} className="z-[520] w-[482px] h-[217px] drop-shadow-[0_0_26px_rgba(250,204,21,.9)]" glow="gold" /> : null}
+          {phase === "idle" || phase === "complete" ? <ImgButton src="/assets/deal-button.png" onClick={dealRound} disabled={false} className={`z-[520] w-[515px] h-[232px] will-change-transform transform-gpu drop-shadow-[0_0_28px_rgba(250,204,21,.95)] ${dealHandPulseClass}`} glow="gold" noHover /> : null}
         </div>
 
         <div className="absolute bottom-[3.2%] left-[50%] -translate-x-1/2 z-[95] flex items-center justify-center gap-3 pointer-events-auto">
