@@ -848,8 +848,8 @@ useEffect(() => {
   const roundCost = blackjackBet + sideBetCost;
   const currentLoss = -roundCost;
   const lockBets = ["dealing", "player", "bonus"].includes(phase);
-  const canSplit = phase === "player" && handReady && !splitPlayActive && !splitHand && player.length === 2 && player[0]?.rank === player[1]?.rank && cardValue(player[0]) !== 10 && !pendingSplitHand && credits >= blackjackBet;
-  const canDoubleDown = phase === "player" && handReady && !splitPlayActive && !splitHand && player.length === 2 && credits >= blackjackBet && canDoubleTotal(player);
+  const canSplit = phase === "player" && !dealerResolving && handReady && !splitPlayActive && !splitHand && player.length === 2 && player[0]?.rank === player[1]?.rank && cardValue(player[0]) !== 10 && !pendingSplitHand && credits >= blackjackBet;
+  const canDoubleDown = phase === "player" && !dealerResolving && handReady && !splitPlayActive && !splitHand && player.length === 2 && credits >= blackjackBet && canDoubleTotal(player);
 
   function showBonusFlash(amount) {
     if (!amount || amount <= 0) return;
@@ -1104,6 +1104,19 @@ useEffect(() => {
 
       if (naturalBlackjack(newDealer)) {
         const playerHasBlackjack = naturalBlackjack(newPlayer);
+
+        if (playerHasBlackjack && spinBetOn) {
+          postBonusActionRef.current = () => {
+            setCredits((c) => c + blackjackBet);
+            setLastWin(-sideBetCost + roundBonusWinRef.current);
+            setPhase("complete");
+            setMessage("Dealer has blackjack. Player blackjack pushes. Bet returned.");
+            setTimeout(() => showHandResult("push"), 450);
+          };
+          celebrate21AndTriggerBonus("Natural blackjack. 21 Spin bonus feature activated.");
+          return;
+        }
+
         let payout = 0;
         let netResult = 0;
         let result = "Dealer has blackjack.";
@@ -1128,6 +1141,25 @@ useEffect(() => {
       }
 
       if (spinBetOn && naturalBlackjack(newPlayer)) {
+        postBonusActionRef.current = () => {
+          const dealerHasBlackjack = naturalBlackjack(newDealer);
+          if (dealerHasBlackjack) {
+            setCredits((c) => c + blackjackBet);
+            setLastWin(-sideBetCost + roundBonusWinRef.current);
+            setPhase("complete");
+            setMessage("Dealer has blackjack. Player blackjack pushes. Bet returned.");
+            setTimeout(() => showHandResult("push"), 450);
+          } else {
+            const blackjackProfit = Math.floor(blackjackBet * 1.2);
+            const payout = blackjackBet + blackjackProfit;
+            const netResult = payout - blackjackBet - sideBetCost;
+            setCredits((c) => c + payout);
+            setLastWin(netResult + roundBonusWinRef.current);
+            setPhase("complete");
+            setMessage(`Blackjack pays 6:5. Paid ${money(payout)}.`);
+            setTimeout(() => showHandResult(roundBonusWinRef.current + netResult), 450);
+          }
+        };
         celebrate21AndTriggerBonus("Natural blackjack. 21 Spin bonus feature activated.");
       } else {
         setPhase("player");
@@ -1224,7 +1256,7 @@ useEffect(() => {
   }
 
   function spinToHit() {
-    if (phase !== "player" || !handReady || (splitPlayActive && (splitAcesLocked || splitCurrentHandLocked || handValue(player) >= 21))) return;
+    if (dealerResolving || phase !== "player" || !handReady || (splitPlayActive && (splitAcesLocked || splitCurrentHandLocked || handValue(player) >= 21))) return;
 
     if (spinning) {
       if (spinHitAnticipationTimerRef.current) {
@@ -1259,8 +1291,8 @@ useEffect(() => {
   }
 
   function stand() {
+    if (dealerResolving || phase !== "player" || !handReady || (splitPlayActive && splitCurrentHandLocked)) return;
     playAudioFile(AUDIO.standPress, "standPress");
-    if (phase !== "player" || !handReady || (splitPlayActive && splitCurrentHandLocked)) return;
     if (splitPlayActive) {
       finishSplitHand(player, deck);
       return;
@@ -1343,6 +1375,7 @@ useEffect(() => {
 
   function playDealerForSplit(finalHands, currentDeck = deck) {
     setDealerResolving(true);
+    setHandReady(false);
     setDealerUpcardVisible(true);
 
     let nextDealer = [...dealer];
@@ -1416,6 +1449,7 @@ useEffect(() => {
   }
 
   function splitPair() {
+    if (dealerResolving || phase !== "player") return;
     playAudioFile(AUDIO.splitPress, "splitPress");
     if (!canSplit) {
       if (player.length === 2 && player[0]?.rank === player[1]?.rank && cardValue(player[0]) === 10) {
@@ -1451,6 +1485,7 @@ useEffect(() => {
   }
 
   function doubleDown() {
+    if (dealerResolving || phase !== "player") return;
     playAudioFile(AUDIO.doubleDownPress, "doubleDownPress");
     if (!canDoubleDown) {
       setMessage("Only active on player 10 or 11, including soft 10 or 11.");
@@ -1496,6 +1531,7 @@ useEffect(() => {
 
   function playDealer(finalPlayer = player, currentDeck = deck, effectiveBet = blackjackBet) {
     setDealerResolving(true);
+    setHandReady(false);
     setDealerUpcardVisible(true);
 
     let nextDealer = [...dealer];
@@ -1853,7 +1889,7 @@ useEffect(() => {
   function scheduleBonusReturn(action = null, delay = 3000) {
     if (bonusReturnTimerRef.current) clearTimeout(bonusReturnTimerRef.current);
     setBonusResolved(true);
-    postBonusActionRef.current = action;
+    if (action) postBonusActionRef.current = action;
     bonusReturnTimerRef.current = setTimeout(() => {
       continueAfterBonus();
     }, delay);
@@ -2049,6 +2085,7 @@ useEffect(() => {
           <div className={`absolute left-0 top-[48px] ${rulesOpen ? "block" : suppressRulesHover ? "hidden" : "hidden group-hover:block"} w-[720px] rounded-3xl bg-black/95 border-4 border-yellow-300 p-7 text-left text-yellow-100 shadow-[0_0_45px_rgba(250,204,21,.75)] z-[9999] pointer-events-auto`}>
             <div className="mb-4 text-yellow-300 text-3xl font-black tracking-widest">SLOTJACK RULES</div>
             <ol className="space-y-5 text-xl font-black leading-snug list-decimal list-inside">
+              <li>Traditional blackjack meets modern slots. Slotjack follows the standard rules of blackjack with sidebets allowing for slot features.</li>
               <li>Bet "21 spin" sidebet to activate "spin to hit" mechanism. All hit cards taken by spinning slot reels.</li>
               <li>Press spin again quickly to stop reels mid spin.</li>
               <li>With "21 spin" sidebet active, any player 21 activates a bonus game.</li>
@@ -2272,12 +2309,12 @@ useEffect(() => {
         </div>
 
         <div className="absolute bottom-[3.2%] left-[50%] -translate-x-1/2 z-[95] flex items-center justify-center gap-3 pointer-events-auto">
-          <ImgButton src="/assets/stand-button.png" onClick={stand} disabled={phase !== "player" || spinning || !handReady} className="w-[118px] h-[118px]" glow="blue" />
+          <ImgButton src="/assets/stand-button.png" onClick={stand} disabled={dealerResolving || phase !== "player" || spinning || !handReady} className="w-[118px] h-[118px]" glow="blue" />
           <div className="relative w-[205px] h-[205px]">
             <ImgButton
               src="/assets/spin-button.png"
               onClick={spinToHit}
-              disabled={phase !== "player" || !handReady || (splitPlayActive && (splitCurrentHandLocked || splitAcesLocked || handValue(player) >= 21))}
+              disabled={dealerResolving || phase !== "player" || !handReady || (splitPlayActive && (splitCurrentHandLocked || splitAcesLocked || handValue(player) >= 21))}
               className={`w-[205px] h-[205px] drop-shadow-[0_0_18px_rgba(239,68,68,.65)] will-change-transform ${
                 phase === "player" && handReady && spinning
                   ? anticipatingSpin
