@@ -2043,7 +2043,7 @@ useEffect(() => {
         )}
 
 
-        <img src="/assets/slotjack-logo.png" className="absolute top-[3.5%] left-1/2 -translate-x-1/2 w-[37%] max-w-[595px] z-10" draggable="false" />
+        <img src="/assets/slotjack-logo.png" className="absolute top-[-5.8%] left-[50.5%] -translate-x-1/2 w-[39%] max-w-[635px] z-10" draggable="false" />
 
         <div className={`absolute top-[2%] left-[3%] z-20 rounded-xl bg-black/80 border-2 border-green-400 px-5 py-3 text-green-400 font-black shadow-[0_0_25px_rgba(34,197,94,.55)] ${progressiveGlow ? "animate-pulse scale-105 shadow-[0_0_60px_rgba(34,197,94,.9)]" : ""}`}>
           <div className="text-xs tracking-widest text-green-200">PROGRESSIVE JACKPOT</div>
