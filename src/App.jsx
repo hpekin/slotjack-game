@@ -2067,6 +2067,11 @@ useEffect(() => {
           <div className={`absolute left-0 top-[48px] ${oddsOpen ? "block" : suppressOddsHover ? "hidden" : "hidden group-hover:block"} w-[720px] rounded-3xl bg-black/95 border-4 border-yellow-300 p-7 text-left text-yellow-100 shadow-[0_0_45px_rgba(250,204,21,.75)] z-[30000] pointer-events-auto`}>
             <div className="mb-4 text-yellow-300 text-3xl font-black tracking-widest">ODDS / RTP NOTE</div>
             <ol className="space-y-5 text-xl font-black leading-snug list-decimal list-inside">
+            <img
+                src="/assets/slotjack_oddschart.png"
+                alt="SlotJack Odds Chart"
+                className="mt-3 w-[50%] mx-auto rounded-lg border border-yellow-400/40"
+            />
               <li>The game is currently tuned to have favorable player outcomes and frequent 21s to show off features of the game.</li>
               <li>The game can be tuned to traditional blackjack probabilities and return to player will result in a house edge due to the player sidebet costs and player deviation from basic strategy in attempts to reach 21 bonus.</li>
               <li>Sidebets only pay out in 21, split, or double down situations, and prize frequency in the side bet bonus games can be adjusted to find a return to player that balances house edge with player engagement.</li>
